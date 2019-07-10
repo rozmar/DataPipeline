@@ -1,0 +1,49 @@
+{
+    "database.host": "mesoscale-activity.datajoint.io",
+    "database.password": "new-account-for-new-data",
+    "database.user": "rozmar",
+    "database.port": 3306,
+    "connection.init_function": null,
+    "database.reconnect": false,
+    "loglevel": "INFO",
+    "safemode": true,
+    "display.limit": 7,
+    "display.width": 14,
+    "display.show_tuple_count": true,
+    "history": [],
+    "do_unittest": true,
+    "tutorial.database": "rozmar_tutorial",
+    "external.aws_access_key_id": null,
+    "external.aws_secret_access_key": null,
+    "external.location": null,
+    "globus.storage_locations": [
+        [
+            "raw-ephys",
+            "5b875fda-4185-11e8-bb52-0ac6873fc732",
+            "test_publication/raw-ephys"
+        ]
+    ],
+    "globus.local_endpoint": "aa4e5f9c-05f3-11e8-a6ad-0a448319c2f8",
+    "globus.local_endpoint_subdir": "~/Globus/test_data/raw",
+    "globus.local_endpoint_local_path": "/Users/chris/Globus/test_data/raw",
+    "ephys_data_paths": [
+        [
+            "../fix-bug-2019-01-31/ephys",
+            "0"
+        ]
+    ],
+    "rig_data_paths": [
+        [
+            "RRig",
+            "../fix-bug-2019-01-31",
+            "0"
+        ]
+    ],
+    "tracking_data_paths": [
+        [
+            "RRig",
+            "../fix-bug-2019-01-31"
+        ]
+    ],
+    "globus.token": "Agk5vxoKmB5QqbqdPmbDgEn5OGa6GKYnnNW3jmv82dwK5MzG1nCVUnoYp0bO3PnpWqMkjoP367x27kYOxd9lvWQvye9o4"
+}
