@@ -17,8 +17,8 @@ subject = lab.Subject()
 surgery = lab.Surgery()
 wr = lab.WaterRestriction()
 #%% populate subjects, surgeries and water restrictions
-df = online_notebook.fetch_animal_metadata()
-for item in df.iterrows():
+df_surgery = online_notebook.fetch_animal_metadata()
+for item in df_surgery.iterrows():
     subjectdata = {
             'subject_id': item[1]['animal#'],
             'cage_number': item[1]['cage#'],
@@ -66,6 +66,7 @@ for item in df.iterrows():
             print('duplicate. water restriction :',item[1]['animal#'], ' already exists')
                   
 #%% populate water restriction and training days
+#%% load pybpod data
 directories = dict()
 directories = {'behavior_project_dirs' : ['/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects/Foraging',
                                           '/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects/Foraging_again']
@@ -74,43 +75,43 @@ projects = list()
 for projectdir in directories['behavior_project_dirs']:
     projects.append(Project())
     projects[-1].load(projectdir)
-#proj.load(directories['behavior_project_dirs'][1])
-#%% load pybpod data
-subject_now = 'FOR04'
-date_now = '20190703'
-sessions_now = list()
-session_start_times_now = list()
-for proj in projects:
+
+IDs = wr.fetch('water_restriction_number')
+for subject_now in IDs: # iterating over subjects
+    df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
+    #%%
+    
+    for df_wr_row in df_wr.iterrows():
+        if df_wr_row[1]['Time'] and df_wr_row[1]['Time-end']: # we use it when both start and end times are filled in
+            date_now = df_wr_row[1].Date.replace('-','')
+            sessions_now = list()
+            session_start_times_now = list()
+            for proj in projects: #
+                exps = proj.experiments
+                for exp in exps:
+                    stps = exp.setups
+                    for stp in stps:
+                        sessions = stp.sessions
+                        for session in stp.sessions:
+                            if session.subjects and session.subjects[0].find(subject_now) >-1 and session.name.startswith(date_now):
+                                sessions_now.append(session)
+                                session_start_times_now.append(session.started)
+                                
+            order = np.argsort(session_start_times_now)
+            for session_idx in order:
+                session = sessions_now[session_idx]
+                csvfilename = (Path(session.path) / (Path(session.path).name + '.csv'))
+                df_behavior_session = behavior_rozmar.load_and_parse_a_csv_file(csvfilename)
+                
+                
     # =============================================================================
-    # subjects = proj.subjects
-    # for subject in subjects: 
-    #     if subject.name == subject_now:
+    #                     
+    #                     if csvfilename.is_file():
+    #                         
+    #                         #
+    #                         print('load')   
+    #                     else:
+    #                         print(session.path)
     # =============================================================================
-    exps = proj.experiments
-    for exp in exps:
-        stps = exp.setups
-        for stp in stps:
-            sessions = stp.sessions
-            for session in stp.sessions:
-                if session.subjects and session.subjects[0].find(subject_now) >-1 and session.name.startswith(date_now):
-                    sessions_now.append(session)
-                    session_start_times_now.append(session.started)
-                    
-order = np.argsort(session_start_times_now)
-for session_idx in order:
-    session = sessions_now[session_idx]
-    csvfilename = (Path(session.path) / (Path(session.path).name + '.csv'))
-    df = behavior_rozmar.load_and_parse_a_csv_file(csvfilename)
-    print(sessions_now[session_idx].name)
-    break
-# =============================================================================
-#                     
-#                     if csvfilename.is_file():
-#                         
-#                         #
-#                         print('load')   
-#                     else:
-#                         print(session.path)
-# =============================================================================
     
     
