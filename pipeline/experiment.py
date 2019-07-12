@@ -1,11 +1,16 @@
-
 import datajoint as dj
-import numpy as np
 
-from . import lab, ccf
-from . import get_schema_name
-
-schema = dj.schema(get_schema_name('experiment'))
+# =============================================================================
+# import numpy as np
+# 
+import pipeline.lab as lab#, ccf
+from pipeline.pipeline_tools import get_schema_name
+#from . import get_schema_name
+# 
+schema = dj.schema(get_schema_name('experiment'),locals())
+#schema = dj.schema('rozmar_foraging_experiment',locals())
+# =============================================================================
+#schema = dj.schema('rozmar_tutorial', locals())
 
 @schema
 class BrainLocation(dj.Manual):
@@ -41,7 +46,9 @@ class Task(dj.Lookup):
     contents = [
          ('audio delay', 'auditory delayed response task (2AFC)'),
          ('audio mem', 'auditory working memory task'),
-         ('s1 stim', 'S1 photostimulation task (2AFC)')
+         ('s1 stim', 'S1 photostimulation task (2AFC)'),
+         ('foraging', 'foraging task based on Bari-Cohen 2019'),
+         ('del foraging','foraging task based on Bari-Cohen 2019 with variable delay period')
          ]
 
 
@@ -63,7 +70,9 @@ class TaskProtocol(dj.Lookup):
          ('s1 stim', 6, 'full distractors; same as protocol 4 but with a no-chirp trial-type'),
          ('s1 stim', 7, 'mini-distractors and full distractors (only at late delay)'),
          ('s1 stim', 8, 'mini-distractors and full distractors (only at late delay), with different levels of the mini-stim and the full-stim during sample                 period'),
-         ('s1 stim', 9, 'mini-distractors and full distractors (only at late delay), with different levels of the mini-stim and the full-stim during sample period')
+         ('s1 stim', 9, 'mini-distractors and full distractors (only at late delay), with different levels of the mini-stim and the full-stim during sample period'),
+         ('foraging', 10, 'moving lickports, fixed delay period, sound GO cue then free choice'),
+         ('del foraging', 11, 'moving lickports, expvariable delay period, sound GO cue then free choice'),
          ]
 
 
@@ -85,22 +94,24 @@ class Photostim(dj.Manual):
     waveform=null:  longblob       # normalized to maximal power. The value of the maximal power is specified for each PhotostimTrialEvent individually
     """
 
-    class Profile(dj.Part):
-        # NOT USED CURRENT
-        definition = """
-        -> master
-        (profile_x, profile_y, profile_z) -> ccf.CCF(ccf_x, ccf_y, ccf_z)
-        ---
-        intensity_timecourse   :  longblob  # (mW/mm^2)
-        """
-
-    # contents = [{
-    #     'photostim_device': 'OBIS470',
-    #     'photo_stim': 0,  # TODO: correct? whatmeens?
-    #     'duration': 0.5,
-    #     # FIXME/TODO: .3s of 40hz sin + .2s rampdown @ 100kHz. int32??
-    #     'waveform': np.zeros(int((0.3+0.2)*100000), np.int32)
-    # }]
+# =============================================================================
+#     class Profile(dj.Part):
+#         # NOT USED CURRENT
+#         definition = """
+#         -> master
+#         (profile_x, profile_y, profile_z) -> ccf.CCF(ccf_x, ccf_y, ccf_z)
+#         ---
+#         intensity_timecourse   :  longblob  # (mW/mm^2)
+#         """
+# 
+#     # contents = [{
+#     #     'photostim_device': 'OBIS470',
+#     #     'photo_stim': 0,  # TODO: correct? whatmeens?
+#     #     'duration': 0.5,
+#     #     # FIXME/TODO: .3s of 40hz sin + .2s rampdown @ 100kHz. int32??
+#     #     'waveform': np.zeros(int((0.3+0.2)*100000), np.int32)
+#     # }]
+# =============================================================================
 
 
 @schema
@@ -114,6 +125,16 @@ class SessionTrial(dj.Imported):
     stop_time : decimal(8, 4)  # (s) relative to session beginning 
     """
 
+@schema
+class SessionBlock(dj.Imported):
+    definition = """
+    -> Session
+    block : smallint 		# block number
+    ---
+    block_uid : int  # unique across sessions/animals
+    start_time : decimal(8, 4)  # (s) relative to session beginning
+    stop_time : decimal(8, 4)  # (s) relative to session beginning
+    """
 
 @schema 
 class TrialNoteType(dj.Lookup):
@@ -222,9 +243,10 @@ class EarlyLick(dj.Lookup):
 class BehaviorTrial(dj.Imported):
     definition = """
     -> SessionTrial
+    -> [nullable] SessionBlock
     ----
     -> TaskProtocol
-    -> TrialInstruction
+    -> [nullable] TrialInstruction
     -> EarlyLick
     -> Outcome
     """
