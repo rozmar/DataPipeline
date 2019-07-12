@@ -7,16 +7,39 @@ import numpy as np
 import Behavior.behavior_rozmar as behavior_rozmar
 #%% connect to server
 import datajoint as dj
-dj.config['database.host'] = 'mesoscale-activity.datajoint.io'
-dj.config['database.user'] = 'rozmar'
-dj.config['database.password'] = 'new-account-for-new-data'
-
 dj.conn()
-from pipeline import lab
-subject = lab.Subject()
-surgery = lab.Surgery()
-wr = lab.WaterRestriction()
+from pipeline import lab, experiment
+
+#%% add users
+print('adding experimenters')
+experimenterdata = [
+        {
+        'username' : 'rozsam',
+        'fullname' : 'Marton Rozsa'
+        }        
+        ]
+for experimenternow in experimenterdata:
+    try:
+        lab.Person().insert1(experimenternow)
+    except dj.DuplicateError:
+        print('duplicate. experimenter: ',experimenternow['username'], ' already exists')
+
+#%% add rigs
+print('adding rigs')
+rigdata = [
+        {
+        'rig' : 'Behavior-Tower-2',
+        'room' : '2w.339',
+        'rig_description' : 'training rig'
+        }        
+        ]
+for rignow in rigdata:
+    try:
+        lab.Rig().insert1(rignow)
+    except dj.DuplicateError:
+        print('duplicate. rig: ',rignow['rig'], ' already exists')
 #%% populate subjects, surgeries and water restrictions
+print('adding surgeries and stuff')
 df_surgery = online_notebook.fetch_animal_metadata()
 for item in df_surgery.iterrows():
     subjectdata = {
@@ -27,7 +50,7 @@ for item in df_surgery.iterrows():
             'username': item[1]['experimenter'],
             }
     try:
-        subject.insert1(subjectdata)
+        lab.Subject().insert1(subjectdata)
     except dj.DuplicateError:
         print('duplicate. animal :',item[1]['animal#'], ' already exists')
     
@@ -46,7 +69,7 @@ for item in df_surgery.iterrows():
                 }
         surgeryidx += 1
         try:
-            surgery.insert1(surgerydata)
+            lab.Surgery().insert1(surgerydata)
         except dj.DuplicateError:
             print('duplicate. surgery for animal ',item[1]['animal#'], ' already exists: ', start_time)
     
@@ -61,12 +84,13 @@ for item in df_surgery.iterrows():
                     'wr_start_weight': df_wr['Weight'][0],
                     }
         try:
-            wr.insert1(wrdata)
+            lab.WaterRestriction().insert1(wrdata)
         except dj.DuplicateError:
             print('duplicate. water restriction :',item[1]['animal#'], ' already exists')
                   
 #%% populate water restriction and training days
 #%% load pybpod data
+print('adding behavior experiments')
 directories = dict()
 directories = {'behavior_project_dirs' : ['/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects/Foraging',
                                           '/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects/Foraging_again']
@@ -76,14 +100,19 @@ for projectdir in directories['behavior_project_dirs']:
     projects.append(Project())
     projects[-1].load(projectdir)
 
-IDs = wr.fetch('water_restriction_number')
-for subject_now in IDs: # iterating over subjects
+
+IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
+for subject_now in IDs.keys(): # iterating over subjects
+    print('subject: ',subject_now)
     df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
-    #%%
     
     for df_wr_row in df_wr.iterrows():
         if df_wr_row[1]['Time'] and df_wr_row[1]['Time-end']: # we use it when both start and end times are filled in
             date_now = df_wr_row[1].Date.replace('-','')
+            print('date: ',date_now)
+            #%% ingest metadata
+            
+            #%%
             sessions_now = list()
             session_start_times_now = list()
             for proj in projects: #
@@ -102,16 +131,39 @@ for subject_now in IDs: # iterating over subjects
                 session = sessions_now[session_idx]
                 csvfilename = (Path(session.path) / (Path(session.path).name + '.csv'))
                 df_behavior_session = behavior_rozmar.load_and_parse_a_csv_file(csvfilename)
-                
-                
-    # =============================================================================
-    #                     
-    #                     if csvfilename.is_file():
-    #                         
-    #                         #
-    #                         print('load')   
-    #                     else:
-    #                         print(session.path)
-    # =============================================================================
-    
+
+
+
+
+
+
+
+
+
+
+# =============================================================================
+# #%% Drop everything
+# schemastodrop = [lab,experiment]
+# for shemanow in schemastodrop:
+#     for attr, value in shemanow.__dict__.items():
+#         if attr[0].isupper():
+#             try:
+#                 value.drop()
+#             except:
+#                 print('already dropped')
+# =============================================================================
+# =============================================================================
+# #%% Drop everythink      
+# schema = dj.schema('rozmar_foraging-experiment')
+# schema.drop(force=True)
+# schema = dj.schema('rozmar_foraging-lab')
+# schema.drop(force=True)    
+#                 
+# =============================================================================
+
+
+
+
+
+
     
