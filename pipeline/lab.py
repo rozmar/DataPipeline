@@ -1,9 +1,9 @@
 import datajoint as dj
-#from . import get_schema_name
+from pipeline.pipeline_tools import get_schema_name
 
-#schema = dj.schema(get_schema_name('lab'))
-#schema = dj.schema(dj.config['dj_local_conf_rozmar'])
-schema = dj.schema('rozmar_tutorial', locals())
+schema = dj.schema(get_schema_name('lab'),locals())
+
+#schema = dj.schema('rozmar_foraging_lab', locals())
 @schema
 class Person(dj.Manual):
     definition = """
