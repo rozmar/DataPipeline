@@ -1,5 +1,6 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from googleapiclient.discovery import build    
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +16,8 @@ client = gspread.authorize(creds)
 def fetch_animal_metadata():
     wb = client.open("Surgery, water restriction and training")
     sheetnames = list()
-    for sheet in wb.worksheets():
+    worksheets = wb.worksheets()
+    for sheet in worksheets:
         sheetnames.append(sheet.title)
     idx_main = sheetnames.index('Surgery')
     main_sheet = wb.get_worksheet(idx_main)
@@ -25,17 +27,16 @@ def fetch_animal_metadata():
 def fetch_water_restriction_metadata(ID):
     wb = client.open("Surgery, water restriction and training")
     sheetnames = list()
-    for sheet in wb.worksheets():
+    worksheets = wb.worksheets()
+    for sheet in worksheets:
         sheetnames.append(sheet.title)
-    idx_main = sheetnames.index(ID)
-    if idx_main > -1:
-        main_sheet = wb.get_worksheet(idx_main)
-        #%%
+    idx_now = sheetnames.index(ID)
+    if idx_now > -1:
+        sheet_now = wb.get_worksheet(idx_now)
         temp = dict()
-        header = main_sheet.row_values(1)
-        #%%
+        header = sheet_now.row_values(1)
         for i,head in enumerate(header):
-            temp[head]=main_sheet.col_values(i+1)[1:]
+            temp[head]=sheet_now.col_values(i+1)[1:]
         df = pd.DataFrame.from_dict(temp, orient='index')
         df.transpose()
         df = df.transpose()
@@ -43,6 +44,22 @@ def fetch_water_restriction_metadata(ID):
     else:
         return None
 
+def fetch_lastmodify_time_animal_metadata():
+    modifiedtime = None
+    ID = None
+    service = build('drive', 'v3', credentials=creds)
+    wb = client.open("Surgery, water restriction and training")
+    ID = wb.id
+    if ID:
+        modifiedtime = service.files().get(fileId = ID,fields = 'modifiedTime').execute()
+    return modifiedtime
+
+#%%
+
+
+    
+    
+#%%
 # =============================================================================
 # #%%
 # 
