@@ -21,7 +21,12 @@ def get_schema_name(name):
 # 
 #     return prefix + name
 # =============================================================================
-
+def drop_every_schema():
+ #%% Drop everything   
+    schema = dj.schema('rozmar_foraging-experiment')
+    schema.drop(force=True)
+    schema = dj.schema('rozmar_foraging-lab')
+    schema.drop(force=True)  
 
 # =============================================================================
 # class InsertBuffer(object):
