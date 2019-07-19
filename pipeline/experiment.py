@@ -22,7 +22,6 @@ class BrainLocation(dj.Manual):
     -> lab.SkullReference
     """
 
-
 @schema
 class Session(dj.Manual):
     definition = """
@@ -30,6 +29,7 @@ class Session(dj.Manual):
     session : smallint 		# session number
     ---
     session_date  : date
+    session_time : time
     -> lab.Person
     -> lab.Rig
     """
@@ -71,8 +71,14 @@ class TaskProtocol(dj.Lookup):
          ('s1 stim', 7, 'mini-distractors and full distractors (only at late delay)'),
          ('s1 stim', 8, 'mini-distractors and full distractors (only at late delay), with different levels of the mini-stim and the full-stim during sample                 period'),
          ('s1 stim', 9, 'mini-distractors and full distractors (only at late delay), with different levels of the mini-stim and the full-stim during sample period'),
-         ('foraging', 10, 'moving lickports, fixed delay period, sound GO cue then free choice'),
-         ('del foraging', 11, 'moving lickports, expvariable delay period, sound GO cue then free choice'),
+         ('foraging', 10, 'moving lickports, fixed delay period, early lick punishment, sound GO cue then free choice'),
+         ('del foraging', 11, 'moving lickports, variable delay period, early lick punishment, sound GO cue then free choice'),
+         ('foraging', 12, 'NO moving lickports, fixed delay period, NO early lick punishment, sound GO cue then free choice'),
+         ('foraging', 13, 'NO moving lickports, fixed delay period, early lick punishment, sound GO cue then free choice'),
+         ('foraging', 14, 'moving lickports, fixed delay period, NO early lick punishment, sound GO cue then free choice'),
+         ('del foraging', 15, 'NO moving lickports, fixed delay period, NO early lick punishment, sound GO cue then free choice'),
+         ('del foraging', 16, 'NO moving lickports, variable delay period, early lick punishment, sound GO cue then free choice'),
+         ('del foraging', 17, 'moving lickports, variable delay period, NO early lick punishment, sound GO cue then free choice'),
          ]
 
 
@@ -113,6 +119,17 @@ class Photostim(dj.Manual):
 #     # }]
 # =============================================================================
 
+@schema
+class SessionBlock(dj.Imported):
+    definition = """
+    -> Session
+    block : smallint 		# block number
+    ---
+    block_uid : int  # unique across sessions/animals
+    block_start_time : decimal(8, 4)  # (s) relative to session beginning
+    p_reward_left : decimal(8, 4)  # reward probability on the left waterport
+    p_reward_right : decimal(8, 4)  # reward probability on the right waterport
+    """
 
 @schema
 class SessionTrial(dj.Imported):
@@ -121,19 +138,8 @@ class SessionTrial(dj.Imported):
     trial : smallint 		# trial number
     ---
     trial_uid : int  # unique across sessions/animals
-    start_time : decimal(8, 4)  # (s) relative to session beginning 
-    stop_time : decimal(8, 4)  # (s) relative to session beginning 
-    """
-
-@schema
-class SessionBlock(dj.Imported):
-    definition = """
-    -> Session
-    block : smallint 		# block number
-    ---
-    block_uid : int  # unique across sessions/animals
-    start_time : decimal(8, 4)  # (s) relative to session beginning
-    stop_time : decimal(8, 4)  # (s) relative to session beginning
+    trial_start_time : decimal(8, 4)  # (s) relative to session beginning 
+    trial_stop_time : decimal(8, 4)  # (s) relative to session beginning 
     """
 
 @schema 
@@ -141,7 +147,7 @@ class TrialNoteType(dj.Lookup):
     definition = """
     trial_note_type : varchar(12)
     """
-    contents = zip(('autolearn', 'protocol #', 'bad', 'bitcode'))
+    contents = zip(('autolearn', 'protocol #', 'bad', 'bitcode','autowater'))
 
 
 @schema
@@ -192,6 +198,14 @@ class SessionComment(dj.Manual):
     session_comment : varchar(767)
     """
 
+@schema
+class SessionDetails(dj.Manual):
+    definition = """
+    -> Session
+    session_weight : decimal(8,4)
+    session_water_earned : decimal(8,4)
+    session_water_extra : decimal(8,4)
+    """
 
 @schema
 class Period(dj.Lookup):
@@ -217,6 +231,13 @@ class TrialInstruction(dj.Lookup):
     """
     contents = zip(('left', 'right'))
 
+@schema
+class Choice(dj.Lookup):
+    definition = """
+    # Choice of the mouse (if there is no instruction)
+    trial_choice  : varchar(8) 
+    """
+    contents = zip(('left', 'right','none'))
 
 @schema
 class Outcome(dj.Lookup):
@@ -243,10 +264,11 @@ class EarlyLick(dj.Lookup):
 class BehaviorTrial(dj.Imported):
     definition = """
     -> SessionTrial
-    -> [nullable] SessionBlock
     ----
+    -> [nullable] SessionBlock
     -> TaskProtocol
     -> [nullable] TrialInstruction
+    -> [nullable] Choice
     -> EarlyLick
     -> Outcome
     """
