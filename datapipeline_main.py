@@ -8,12 +8,18 @@ import Behavior.behavior_rozmar as behavior_rozmar
 import json
 import time as timer
 import decimal
-#%% connect to server
+#% connect to server
 import datajoint as dj
 dj.conn()
 from pipeline import pipeline_tools
 from pipeline import lab, experiment
-
+from pipeline import behavioranal
+  
+def populatemytables():
+    behavioranal.TrialReactionTime().populate(reserve_jobs = True,order = 'random')
+    behavioranal.SessionReactionTimeHistogram().populate(reserve_jobs = True,order = 'random')
+    behavioranal.SessionLickRhythmHistogram().populate(reserve_jobs = True,order = 'random')  
+    behavioranal.SessionTrainingType().populate(reserve_jobs = True,order = 'random')  
 #%% save metadata from google drive if necessairy
 lastmodify = online_notebook.fetch_lastmodify_time_animal_metadata()
 with open(dj.config['locations.metadata']+'last_modify_time.json') as timedata:
@@ -129,6 +135,7 @@ for projectdir in directories['behavior_project_dirs']:
 IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
 for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects
     print('subject: ',subject_now)
+    delete_last_session_before_upload = True
     #df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
     df_wr = pd.read_csv(dj.config['locations.metadata']+subject_now+'.csv')
     for df_wr_row in df_wr.iterrows():
@@ -159,6 +166,15 @@ for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over
                 if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date > "'+str(session_date)+'"') != 0:
                     print('session already imported, skipping: ' + str(session_date))
                 else: # reuploading only the LAST session that is present on the server
+                    if delete_last_session_before_upload == True: # the last session is 
+                        if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
+                            print('dropping last session')
+                            session_todel =experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"'
+                            dj.config['safemode'] = False
+                            session_todel.delete()
+                            dj.config['safemode'] = True
+                        delete_last_session_before_upload = False
+                        
                     df_behavior_session = behavior_rozmar.load_and_parse_a_csv_file(csvfilename)
                     if 'var:WaterPort_L_ch_in' in df_behavior_session.keys():# if the variables are not saved, they are inherited from the previous session
                         channel_L = df_behavior_session['var:WaterPort_L_ch_in'][0]
@@ -405,6 +421,19 @@ for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over
                                                 })
                                     if actioneventdatas:
                                         experiment.ActionEvent().insert(actioneventdatas, allow_direct_insert=True)
+
+#%%% parallel populate
+import multiprocessing as mp
+pool = mp.Pool(mp.cpu_count())
+pool.apply(populatemytables)
+pool.close()
+pool.terminate()
+#%% populate
+behavioranal.TrialReactionTime().populate(display_progress = True,reserve_jobs = True)
+behavioranal.SessionReactionTimeHistogram().populate(display_progress = True,reserve_jobs = True)
+behavioranal.SessionLickRhythmHistogram().populate(display_progress = True,reserve_jobs = True)
+
+    
 # =============================================================================
 #                 #%%
 #                 #%
