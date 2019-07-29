@@ -7,6 +7,9 @@ import pipeline.experiment as experiment
 from pipeline.pipeline_tools import get_schema_name
 #from . import get_schema_name
 # 
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
 schema = dj.schema(get_schema_name('behavior-anal'),locals())
 
 @schema
@@ -222,9 +225,95 @@ class SessionBlockSwitchChoices(dj.Computed):
     
     
     
-    
-    
-    
+@schema
+class SessionFittedChoiceCoefficients(dj.Computed):    
+    definition = """
+    -> experiment.Session
+    ---
+    coefficients_rewards : longblob
+    coefficients_choices  : longblob
+    score :  decimal(8,4)
+    """    
+    def make(self, key):
+        df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key))
+        trials_back = 15
+        idx = np.argsort(df_behaviortrial['trial'])
+        choices = df_behaviortrial['trial_choice'][idx].values
+        choices_digitized = np.zeros(len(choices))
+        choices_digitized[choices=='right']=1
+        choices_digitized[choices=='left']=-1
+        outcomes = df_behaviortrial['outcome'][idx].values
+        rewards_digitized = choices_digitized.copy()
+        rewards_digitized[outcomes=='miss']=0
+        label = list()
+        data = list()
+        for trial in range(trials_back,len(rewards_digitized)):
+            if choices_digitized[trial] != 0:
+                label.append(choices_digitized[trial])
+                data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+        label = np.array(label)
+        data = np.matrix(data)
+        x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+        logisticRegr = LogisticRegression(solver = 'lbfgs')
+        logisticRegr.fit(x_train, y_train)
+        #predictions = logisticRegr.predict(x_test)
+        score = logisticRegr.score(x_test, y_test)        
+        coefficients = logisticRegr.coef_
+        coefficients = coefficients[0]
+        coeff_rewards = coefficients[trials_back-1::-1]
+        coeff_choices = coefficients[-1:trials_back-1:-1]
+        key['coefficients_rewards'] = coeff_rewards
+        key['coefficients_choices'] = coeff_choices
+        key['score'] = score
+        self.insert1(key,skip_duplicates=True)
+
+
+@schema
+class SubjectFittedChoiceCoefficients(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject : longblob
+    coefficients_choices_subject  : longblob
+    score_subject :  decimal(8,4)
+    """    
+    def make(self, key):
+        trials_back = 15
+        first_session = 8
+        label = list()
+        data = list()
+        df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key))
+        sessions = np.unique(df_behaviortrial_all['session'])
+        for session in sessions:
+            if session >= first_session:
+                df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                idx = np.argsort(df_behaviortrial['trial'])
+                choices = df_behaviortrial['trial_choice'].values[idx]
+                choices_digitized = np.zeros(len(choices))
+                choices_digitized[choices=='right']=1
+                choices_digitized[choices=='left']=-1
+                outcomes = df_behaviortrial['outcome'].values[idx]
+                rewards_digitized = choices_digitized.copy()
+                rewards_digitized[outcomes=='miss']=0
+                for trial in range(trials_back,len(rewards_digitized)):
+                    if choices_digitized[trial] != 0:
+                        label.append(choices_digitized[trial])
+                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+        label = np.array(label)
+        data = np.matrix(data)
+        x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+        logisticRegr = LogisticRegression(solver = 'lbfgs')
+        logisticRegr.fit(x_train, y_train)
+        #predictions = logisticRegr.predict(x_test)
+        score = logisticRegr.score(x_test, y_test)        
+        coefficients = logisticRegr.coef_
+        coefficients = coefficients[0]
+        coeff_rewards = coefficients[trials_back-1::-1]
+        coeff_choices = coefficients[-1:trials_back-1:-1]
+        key['coefficients_rewards_subject'] = coeff_rewards
+        key['coefficients_choices_subject'] = coeff_choices
+        key['score_subject'] = score
+        self.insert1(key,skip_duplicates=True)    
     
     
     
