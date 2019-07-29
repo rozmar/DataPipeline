@@ -16,10 +16,14 @@ from pipeline import lab, experiment
 from pipeline import behavioranal
   
 def populatemytables():
-    behavioranal.TrialReactionTime().populate(reserve_jobs = True,order = 'random')
-    behavioranal.SessionReactionTimeHistogram().populate(reserve_jobs = True,order = 'random')
-    behavioranal.SessionLickRhythmHistogram().populate(reserve_jobs = True,order = 'random')  
-    behavioranal.SessionTrainingType().populate(reserve_jobs = True,order = 'random')  
+    behavioranal.TrialReactionTime().populate(display_progress = True,reserve_jobs = True,order = 'random')
+    behavioranal.SessionReactionTimeHistogram().populate(display_progress = True,reserve_jobs = True,order = 'random')
+    behavioranal.SessionLickRhythmHistogram().populate(display_progress = True,reserve_jobs = True,order = 'random')  
+    behavioranal.SessionTrainingType().populate(display_progress = True,reserve_jobs = True,order = 'random')  
+    behavioranal.SessionRewardRatio().populate(display_progress = True,reserve_jobs = True,order = 'random')  
+    behavioranal.BlockRewardRatio().populate(display_progress = True,reserve_jobs = True,order = 'random')  
+    behavioranal.SessionBlockSwitchChoices().populate(display_progress = True,reserve_jobs = True,order = 'random')  
+    
 #%% save metadata from google drive if necessairy
 lastmodify = online_notebook.fetch_lastmodify_time_animal_metadata()
 with open(dj.config['locations.metadata']+'last_modify_time.json') as timedata:
@@ -424,7 +428,7 @@ for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over
 
 #%%% parallel populate
 import multiprocessing as mp
-pool = mp.Pool(mp.cpu_count())
+pool = mp.Pool(8)
 pool.apply(populatemytables)
 pool.close()
 pool.terminate()
@@ -432,8 +436,32 @@ pool.terminate()
 behavioranal.TrialReactionTime().populate(display_progress = True,reserve_jobs = True)
 behavioranal.SessionReactionTimeHistogram().populate(display_progress = True,reserve_jobs = True)
 behavioranal.SessionLickRhythmHistogram().populate(display_progress = True,reserve_jobs = True)
+behavioranal.SessionTrainingType().populate(display_progress = True,reserve_jobs = True)  
+behavioranal.SessionRewardRatio().populate(display_progress = True,reserve_jobs = True)
+behavioranal.BlockRewardRatio().populate(display_progress = True,reserve_jobs = True)  
 
-    
+# =============================================================================
+# #%%
+# from multiprocessing import Process
+# import os
+# 
+# def info(title):
+#     print(title)
+#     print('module name:', __name__)
+#     if hasattr(os, 'getppid'):  # only available on Unix
+#         print('parent process:', os.getppid())
+#     print('process id:', os.getpid())
+# 
+# def f(name):
+#     info('function f')
+#     print('hello', name)
+# 
+# if __name__ == '__main__':
+#     info('main line')
+#     p = Process(target=f, args=('bob',))
+#     p.start()
+#     p.join()
+# =============================================================================
 # =============================================================================
 #                 #%%
 #                 #%
