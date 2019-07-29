@@ -16,13 +16,16 @@ from pipeline import lab, experiment
 from pipeline import behavioranal
   
 def populatemytables():
-    behavioranal.TrialReactionTime().populate(display_progress = True,reserve_jobs = True,order = 'random')
-    behavioranal.SessionReactionTimeHistogram().populate(display_progress = True,reserve_jobs = True,order = 'random')
-    behavioranal.SessionLickRhythmHistogram().populate(display_progress = True,reserve_jobs = True,order = 'random')  
-    behavioranal.SessionTrainingType().populate(display_progress = True,reserve_jobs = True,order = 'random')  
-    behavioranal.SessionRewardRatio().populate(display_progress = True,reserve_jobs = True,order = 'random')  
-    behavioranal.BlockRewardRatio().populate(display_progress = True,reserve_jobs = True,order = 'random')  
-    behavioranal.SessionBlockSwitchChoices().populate(display_progress = True,reserve_jobs = True,order = 'random')  
+    arguments = {'display_progress' : True, 'reserve_jobs' : True,'order' : 'random'}
+    behavioranal.TrialReactionTime().populate(**arguments)
+    behavioranal.SessionReactionTimeHistogram().populate(**arguments)
+    behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
+    behavioranal.SessionTrainingType().populate(**arguments)  
+    behavioranal.SessionRewardRatio().populate(**arguments)  
+    behavioranal.BlockRewardRatio().populate(**arguments)  
+    behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
+    behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)  
+    behavioranal.SubjectFittedChoiceCoefficients().populate(**arguments)  
     
 #%% save metadata from google drive if necessairy
 lastmodify = online_notebook.fetch_lastmodify_time_animal_metadata()
