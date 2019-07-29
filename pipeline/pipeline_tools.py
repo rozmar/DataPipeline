@@ -3,7 +3,6 @@
 
 import datajoint as dj
 #import hashlib
-
 #log = logging.getLogger(__name__)
 
 
