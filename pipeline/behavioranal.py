@@ -66,20 +66,21 @@ class SessionLickRhythmHistogram(dj.Computed):
     """
     def make(self, key):
         df_licks=pd.DataFrame((experiment.ActionEvent() & key) * (experiment.BehaviorTrial() & key) * (TrialReactionTime() & key))
-        alltrials = df_licks['outcome']!='ignore'
-        misstrials = df_licks['outcome']=='miss'
-        hittrials = df_licks['outcome']=='hit'
-        lick_times_from_first_lick_all = np.array( df_licks['action_event_time'][alltrials] - df_licks['first_lick_time'][alltrials] , dtype=np.float32)
-        lick_times_from_first_lick_miss = np.array( df_licks['action_event_time'][misstrials] - df_licks['first_lick_time'][misstrials] , dtype=np.float32)
-        lick_times_from_first_lick_hit = np.array( df_licks['action_event_time'][hittrials] - df_licks['first_lick_time'][hittrials] , dtype=np.float32)
-        vals_all,bins = np.histogram(lick_times_from_first_lick_all,100,(0,1))
-        vals_miss,bins = np.histogram(lick_times_from_first_lick_miss,100,(0,1))
-        vals_hit,bins = np.histogram(lick_times_from_first_lick_hit,100,(0,1))
-        key['lick_rhythm_bins'] = bins
-        key['lick_rhythm_values_all_trials'] = vals_all
-        key['lick_rhythm_values_miss_trials'] = vals_miss
-        key['lick_rhythm_values_hit_trials'] = vals_hit
-        self.insert1(key,skip_duplicates=True)
+        if len(df_licks) > 0: # there might be empty sessions
+            alltrials = df_licks['outcome']!='ignore'
+            misstrials = df_licks['outcome']=='miss'
+            hittrials = df_licks['outcome']=='hit'
+            lick_times_from_first_lick_all = np.array( df_licks['action_event_time'][alltrials] - df_licks['first_lick_time'][alltrials] , dtype=np.float32)
+            lick_times_from_first_lick_miss = np.array( df_licks['action_event_time'][misstrials] - df_licks['first_lick_time'][misstrials] , dtype=np.float32)
+            lick_times_from_first_lick_hit = np.array( df_licks['action_event_time'][hittrials] - df_licks['first_lick_time'][hittrials] , dtype=np.float32)
+            vals_all,bins = np.histogram(lick_times_from_first_lick_all,100,(0,1))
+            vals_miss,bins = np.histogram(lick_times_from_first_lick_miss,100,(0,1))
+            vals_hit,bins = np.histogram(lick_times_from_first_lick_hit,100,(0,1))
+            key['lick_rhythm_bins'] = bins
+            key['lick_rhythm_values_all_trials'] = vals_all
+            key['lick_rhythm_values_miss_trials'] = vals_miss
+            key['lick_rhythm_values_hit_trials'] = vals_hit
+            self.insert1(key,skip_duplicates=True)
         
 @schema
 class SessionTrainingType(dj.Computed):
@@ -105,23 +106,25 @@ class SessionRewardRatio(dj.Computed):
     """    
     def make(self, key):
         df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key) * (experiment.SessionBlock() & key))
-        windowsize = 20
-        minperiod = 5
-        df_behaviortrial['reward']=0
-        df_behaviortrial.loc[df_behaviortrial['outcome'] == 'hit' , 'reward'] = 1
-        df_behaviortrial.loc[df_behaviortrial['outcome'] == 'miss' , 'reward'] = 0 
-        moving_all = df_behaviortrial.reward.rolling(window = windowsize,center = True, min_periods=minperiod).mean()
-        df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'left' , 'reward'] = np.nan
-        moving_right = df_behaviortrial.reward.rolling(window = windowsize,center = True, min_periods=minperiod).mean()
-        df_behaviortrial.loc[df_behaviortrial['outcome'] == 'hit' , 'reward'] = 1
-        df_behaviortrial.loc[df_behaviortrial['outcome'] == 'miss' , 'reward'] = 0 
-        df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'right' , 'reward'] = np.nan
-        moving_left = df_behaviortrial.reward.rolling(window = windowsize,center = True, min_periods=minperiod).mean()        
-        key['session_reward_ratio'] = moving_all
-        key['session_reward_ratio_left'] = moving_left
-        key['session_reward_ratio_right'] = moving_right
-        key['session_maximal_reward_ratio'] = np.array(df_behaviortrial['p_reward_left']+df_behaviortrial['p_reward_right'],dtype=np.float32)
-        self.insert1(key,skip_duplicates=True)
+        if len(df_behaviortrial)>0:
+            windowsize = 20
+            minperiod = 5
+            df_behaviortrial['reward']=0
+            df_behaviortrial.loc[df_behaviortrial['outcome'] == 'hit' , 'reward'] = 1
+            df_behaviortrial.loc[df_behaviortrial['outcome'] == 'miss' , 'reward'] = 0 
+            moving_all = df_behaviortrial.reward.rolling(window = windowsize,center = True, min_periods=minperiod).mean()
+            df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'left' , 'reward'] = np.nan
+            moving_right = df_behaviortrial.reward.rolling(window = windowsize,center = True, min_periods=minperiod).mean()
+            df_behaviortrial.loc[df_behaviortrial['outcome'] == 'hit' , 'reward'] = 1
+            df_behaviortrial.loc[df_behaviortrial['outcome'] == 'miss' , 'reward'] = 0 
+            df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'right' , 'reward'] = np.nan
+            moving_left = df_behaviortrial.reward.rolling(window = windowsize,center = True, min_periods=minperiod).mean()        
+            key['session_reward_ratio'] = moving_all
+            key['session_reward_ratio_left'] = moving_left
+            key['session_reward_ratio_right'] = moving_right
+            key['session_maximal_reward_ratio'] = np.array(df_behaviortrial['p_reward_left']+df_behaviortrial['p_reward_right'],dtype=np.float32)
+            
+            self.insert1(key,skip_duplicates=True)
        
 @schema
 class BlockRewardRatio(dj.Computed):
@@ -175,53 +178,59 @@ class SessionBlockSwitchChoices(dj.Computed):
     
     """    
     def make(self, key):
-        minblocknum = 30
+        minblocklength = 20
+        prevblocklength = 30
+        nextblocklength = 50
         df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key) * (experiment.SessionBlock() & key) * (BlockRewardRatio()&key))
-        df_behaviortrial['trial_choice_plot'] = np.nan
-        df_behaviortrial.loc[df_behaviortrial['trial_choice']=='left','trial_choice_plot']=0
-        df_behaviortrial.loc[df_behaviortrial['trial_choice']=='right','trial_choice_plot']=1
-        blockchanges=np.where(np.diff(df_behaviortrial['block']))[0]
-        p_change_L = list()
-        p_change_R = list()
-        p_L_prev = list()
-        p_R_prev = list()
-        p_L_next = list()
-        p_R_next = list()
-        choices_matrix = list()
-        block_length_prev = list()
-        block_length_next = list()
-        for idx in blockchanges:
-            prev_blocknum = df_behaviortrial['block_length'][idx]
-            next_blocknum = df_behaviortrial['block_length'][idx+1]
-            prev_block_p_L = df_behaviortrial['p_reward_left'][idx]
-            next_block_p_L = df_behaviortrial['p_reward_left'][idx+1]
-            prev_block_p_R = df_behaviortrial['p_reward_right'][idx]
-            next_block_p_R = df_behaviortrial['p_reward_right'][idx+1]
-            if prev_blocknum > minblocknum and next_blocknum > minblocknum:
-                block_length_prev.append(prev_blocknum)
-                block_length_next.append(next_blocknum)
-                p_L_prev.append(float(prev_block_p_L))
-                p_R_prev.append(float(prev_block_p_R))
-                p_L_next.append(float(next_block_p_L))
-                p_R_next.append(float(next_block_p_R))
-                p_change_L.append(float((next_block_p_L-prev_block_p_L)))
-                p_change_R.append(float(next_block_p_R-prev_block_p_R))
-                choices = np.array(df_behaviortrial['trial_choice_plot'][idx-29:idx+np.min([51,next_blocknum+1])],dtype=np.float32)
-                if next_blocknum < 50:
-                    ending = np.ones(50-next_blocknum)*np.nan
-                    choices = np.concatenate([choices,ending])
-                choices_matrix.append(choices)
-        choices_matrix = np.asmatrix(choices_matrix) 
-        key['block_length_prev'] = block_length_prev
-        key['block_length_next'] = block_length_next
-        key['p_l_prev'] = p_L_prev
-        key['p_r_prev'] = p_R_prev
-        key['p_l_next'] = p_L_next
-        key['p_r_next'] = p_R_next
-        key['p_l_change'] = p_change_L
-        key['p_r_change'] = p_change_R
-        key['choices_matrix'] = choices_matrix
-        self.insert1(key,skip_duplicates=True)
+        if len(df_behaviortrial)>0:
+            df_behaviortrial['trial_choice_plot'] = np.nan
+            df_behaviortrial.loc[df_behaviortrial['trial_choice']=='left','trial_choice_plot']=0
+            df_behaviortrial.loc[df_behaviortrial['trial_choice']=='right','trial_choice_plot']=1
+            blockchanges=np.where(np.diff(df_behaviortrial['block']))[0]
+            p_change_L = list()
+            p_change_R = list()
+            p_L_prev = list()
+            p_R_prev = list()
+            p_L_next = list()
+            p_R_next = list()
+            choices_matrix = list()
+            block_length_prev = list()
+            block_length_next = list()
+            for idx in blockchanges:
+                prev_blocknum = df_behaviortrial['block_length'][idx]
+                next_blocknum = df_behaviortrial['block_length'][idx+1]
+                prev_block_p_L = df_behaviortrial['p_reward_left'][idx]
+                next_block_p_L = df_behaviortrial['p_reward_left'][idx+1]
+                prev_block_p_R = df_behaviortrial['p_reward_right'][idx]
+                next_block_p_R = df_behaviortrial['p_reward_right'][idx+1]
+                if prev_blocknum > minblocklength and next_blocknum > minblocklength:
+                    block_length_prev.append(prev_blocknum)
+                    block_length_next.append(next_blocknum)
+                    p_L_prev.append(float(prev_block_p_L))
+                    p_R_prev.append(float(prev_block_p_R))
+                    p_L_next.append(float(next_block_p_L))
+                    p_R_next.append(float(next_block_p_R))
+                    p_change_L.append(float((next_block_p_L-prev_block_p_L)))
+                    p_change_R.append(float(next_block_p_R-prev_block_p_R))
+                    choices = np.array(df_behaviortrial['trial_choice_plot'][max([np.max([idx-prevblocklength+1,idx-prev_blocknum+1]),0]):idx+np.min([nextblocklength+1,next_blocknum+1])],dtype=np.float32)
+                    if next_blocknum < nextblocklength:
+                        ending = np.ones(nextblocklength-next_blocknum)*np.nan
+                        choices = np.concatenate([choices,ending])
+                    if prev_blocknum < prevblocklength:
+                        preceding = np.ones(prevblocklength-prev_blocknum)*np.nan
+                        choices = np.concatenate([preceding,choices])
+                    choices_matrix.append(choices)
+            choices_matrix = np.asmatrix(choices_matrix) 
+            key['block_length_prev'] = block_length_prev
+            key['block_length_next'] = block_length_next
+            key['p_l_prev'] = p_L_prev
+            key['p_r_prev'] = p_R_prev
+            key['p_l_next'] = p_L_next
+            key['p_r_next'] = p_R_next
+            key['p_l_change'] = p_change_L
+            key['p_r_change'] = p_change_R
+            key['choices_matrix'] = choices_matrix
+            self.insert1(key,skip_duplicates=True)
     
     
     
@@ -235,6 +244,7 @@ class SessionFittedChoiceCoefficients(dj.Computed):
     score :  decimal(8,4)
     """    
     def make(self, key):
+        print(key)
         df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key))
         trials_back = 15
         idx = np.argsort(df_behaviortrial['trial'])
@@ -252,20 +262,21 @@ class SessionFittedChoiceCoefficients(dj.Computed):
                 label.append(choices_digitized[trial])
                 data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
         label = np.array(label)
-        data = np.matrix(data)
-        x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-        logisticRegr = LogisticRegression(solver = 'lbfgs')
-        logisticRegr.fit(x_train, y_train)
-        #predictions = logisticRegr.predict(x_test)
-        score = logisticRegr.score(x_test, y_test)        
-        coefficients = logisticRegr.coef_
-        coefficients = coefficients[0]
-        coeff_rewards = coefficients[trials_back-1::-1]
-        coeff_choices = coefficients[-1:trials_back-1:-1]
-        key['coefficients_rewards'] = coeff_rewards
-        key['coefficients_choices'] = coeff_choices
-        key['score'] = score
-        self.insert1(key,skip_duplicates=True)
+        if len(data)>0:
+            data = np.matrix(data)
+            x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+            logisticRegr = LogisticRegression(solver = 'lbfgs')
+            logisticRegr.fit(x_train, y_train)
+            #predictions = logisticRegr.predict(x_test)
+            score = logisticRegr.score(x_test, y_test)        
+            coefficients = logisticRegr.coef_
+            coefficients = coefficients[0]
+            coeff_rewards = coefficients[trials_back-1::-1]
+            coeff_choices = coefficients[-1:trials_back-1:-1]
+            key['coefficients_rewards'] = coeff_rewards
+            key['coefficients_choices'] = coeff_choices
+            key['score'] = score
+            self.insert1(key,skip_duplicates=True)
 
 
 @schema
@@ -278,6 +289,7 @@ class SubjectFittedChoiceCoefficients(dj.Computed):
     score_subject :  decimal(8,4)
     """    
     def make(self, key):
+        print(key)
         trials_back = 15
         first_session = 8
         label = list()
