@@ -16,7 +16,7 @@ from pipeline import lab, experiment
 from pipeline import behavioranal
   
 def populatemytables():
-    arguments = {'display_progress' : True, 'reserve_jobs' : True,'order' : 'random'}
+    arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
     behavioranal.TrialReactionTime().populate(**arguments)
     behavioranal.SessionReactionTimeHistogram().populate(**arguments)
     behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
@@ -24,14 +24,18 @@ def populatemytables():
     behavioranal.SessionRewardRatio().populate(**arguments)  
     behavioranal.BlockRewardRatio().populate(**arguments)  
     behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
-    behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)  
-    behavioranal.SubjectFittedChoiceCoefficients().populate(**arguments)  
+    behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
+# =============================================================================
+#     behavioranal.SubjectFittedChoiceCoefficients().delete()
+#     behavioranal.SubjectFittedChoiceCoefficients().populate(**arguments)  
+# =============================================================================
     
 #%% save metadata from google drive if necessairy
 lastmodify = online_notebook.fetch_lastmodify_time_animal_metadata()
 with open(dj.config['locations.metadata']+'last_modify_time.json') as timedata:
     lastmodify_prev = json.loads(timedata.read())
 if lastmodify != lastmodify_prev:
+    print('updating surgery and WR metadata from google drive')
     dj.config['locations.metadata']
     df_surgery = online_notebook.fetch_animal_metadata()
     df_surgery.to_csv(dj.config['locations.metadata']+'Surgery.csv')
@@ -48,7 +52,11 @@ experimenterdata = [
         {
         'username' : 'rozsam',
         'fullname' : 'Marton Rozsa'
-        }        
+        },
+        {
+        'username' : 'Tina',
+        'fullname' : 'Tina Pluntke'
+        }
         ]
 for experimenternow in experimenterdata:
     try:
@@ -130,8 +138,10 @@ for item in df_surgery.iterrows():
 #%% load pybpod data
 print('adding behavior experiments')
 directories = dict()
-directories = {'behavior_project_dirs' : ['/home/rozmar/Data/Behavior/Behavior_room/Foraging',
-                                          '/home/rozmar/Data/Behavior/Behavior_room/Foraging_again']
+directories = {'behavior_project_dirs' : ['/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging',
+                                          '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging_again',
+                                          '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging_homecage',
+                                          '/home/rozmar/Data/Behavior/Behavior_room/Tower-3/Foraging_homecage']
     }
 projects = list()
 for projectdir in directories['behavior_project_dirs']:
@@ -146,7 +156,7 @@ for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over
     #df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
     df_wr = pd.read_csv(dj.config['locations.metadata']+subject_now+'.csv')
     for df_wr_row in df_wr.iterrows():
-        if df_wr_row[1]['Time'] and df_wr_row[1]['Time-end']: # we use it when both start and end times are filled in
+        if df_wr_row[1]['Time'] and df_wr_row[1]['Time-end'] and df_wr_row[1]['Training type'] != 'restriction' and df_wr_row[1]['Training type'] != 'handling': # we use it when both start and end times are filled in, restriction and handling is skipped
             date_now = df_wr_row[1].Date.replace('-','')
             print('date: ',date_now)
 
@@ -173,7 +183,7 @@ for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over
                 if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date > "'+str(session_date)+'"') != 0:
                     print('session already imported, skipping: ' + str(session_date))
                 else: # reuploading only the LAST session that is present on the server
-                    if delete_last_session_before_upload == True: # the last session is 
+                    if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted in the animal is still in training..
                         if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
                             print('dropping last session')
                             session_todel =experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"'
@@ -308,7 +318,7 @@ for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over
                                                 task_protocol = 13
                                             else:
                                                 task_protocol = 12
-                                    elif experiment_name in ['Delayed_foraging','Delayed foraging']:
+                                    elif experiment_name in ['Delayed_foraging','Delayed foraging','Foraging_homecage']:
                                         task = 'del foraging'
                                         if 'var:early_lick_punishment' in df_behavior_session.keys():# inherits task protocol if variables are not available
                                             if df_behavior_session['var:early_lick_punishment'][0] and df_behavior_session['var:motor_retract_waterport'][0]:
