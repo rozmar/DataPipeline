@@ -27,6 +27,10 @@ def drop_every_schema():
     schema.drop(force=True) 
     schema = dj.schema('rozmar_foraging-experiment')
     schema.drop(force=True)
+    #%%
+    schema = dj.schema('rozmar_foraging-ephys_patch')
+    schema.drop(force=True)
+    #%%
     schema = dj.schema('rozmar_foraging-lab')
     schema.drop(force=True) 
     
