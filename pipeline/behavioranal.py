@@ -132,7 +132,7 @@ class BlockRewardRatio(dj.Computed):
     definition = """
     -> experiment.SessionBlock
     ---
-    block_reward_ratio : decimal(8,4) # 
+    block_reward_ratio : decimal(8,4) # miss = 0, hit = 1
     block_reward_ratio_first_tertile : decimal(8,4) # 
     block_reward_ratio_second_tertile : decimal(8,4) # 
     block_reward_ratio_third_tertile : decimal(8,4) # 
@@ -159,6 +159,38 @@ class BlockRewardRatio(dj.Computed):
             key['block_reward_ratio_first_tertile'] = block_reward_ratio_first_tertile
             key['block_reward_ratio_second_tertile'] = block_reward_ratio_second_tertile
             key['block_reward_ratio_third_tertile'] = block_reward_ratio_third_tertile
+        self.insert1(key,skip_duplicates=True)
+
+@schema
+class BlockChoiceRatio(dj.Computed):
+    definition = """
+    -> experiment.SessionBlock
+    ---
+    block_choice_ratio : decimal(8,4) # 0 = left, 1 = right
+    block_choice_ratio_first_tertile : decimal(8,4) # 
+    block_choice_ratio_second_tertile : decimal(8,4) # 
+    block_choice_ratio_third_tertile : decimal(8,4) # 
+    """    
+    def make(self, key):
+        df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key))
+        df_behaviortrial['reward']=0
+        df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'right' , 'reward'] = 1
+        df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'left' , 'reward'] = 0        
+        trialnum = len(df_behaviortrial)
+        key['block_choice_ratio'] = -1
+        key['block_choice_ratio_first_tertile'] = -1
+        key['block_choice_ratio_second_tertile'] = -1
+        key['block_choice_ratio_third_tertile'] = -1
+        if trialnum >10:
+            tertilelength = int(np.floor(trialnum /3))
+            block_choice_ratio = df_behaviortrial.reward.mean()
+            block_choice_ratio_first_tertile = df_behaviortrial.reward[:tertilelength].mean()
+            block_choice_ratio_second_tertile = df_behaviortrial.reward[-tertilelength:].mean()
+            block_choice_ratio_third_tertile = df_behaviortrial.reward[tertilelength:2*tertilelength].mean()
+            key['block_choice_ratio'] = block_choice_ratio
+            key['block_choice_ratio_first_tertile'] = block_choice_ratio_first_tertile
+            key['block_choice_ratio_second_tertile'] = block_choice_ratio_second_tertile
+            key['block_choice_ratio_third_tertile'] = block_choice_ratio_third_tertile
         self.insert1(key,skip_duplicates=True)
      
 
