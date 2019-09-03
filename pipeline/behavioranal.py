@@ -193,6 +193,21 @@ class BlockChoiceRatio(dj.Computed):
             key['block_choice_ratio_third_tertile'] = block_choice_ratio_third_tertile
         self.insert1(key,skip_duplicates=True)
      
+@schema
+class BlockAutoWaterCount(dj.Computed):
+    definition = """
+    -> experiment.SessionBlock
+    ---
+    block_autowater_count : smallint # number of autowater trials in block
+    """
+    def make(self, key):
+        df_autowater = pd.DataFrame(experiment.TrialNote()*experiment.SessionBlock() & key)
+        if len(df_autowater) == 0:
+            block_autowater_count = 0
+        else:
+            block_autowater_count =(df_autowater['trial_note_type']=='autowater').sum()
+        key['block_autowater_count'] = block_autowater_count
+        self.insert1(key,skip_duplicates=True)
 
 @schema
 class SessionBlockSwitchChoices(dj.Computed):
