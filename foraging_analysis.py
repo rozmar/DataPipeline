@@ -6,6 +6,53 @@ from pipeline import pipeline_tools, lab, experiment, behavioranal
 dj.conn()
 import matplotlib.pyplot as plt
 import decimal
+#%% foraging tuning curves
+wr_name = 'FOR04'
+minsession = 8
+mintrialnum = 50
+metricnames = ['block_choice_ratio','block_choice_ratio_first_tertile','block_choice_ratio_second_tertile','block_choice_ratio_third_tertile']
+subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+key = {
+       'subject_id':subject_id,
+       #'session': session
+       }
+
+pd_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()) & key)
+#%
+pd_choice_reward_rate['block_relative_value']=pd_choice_reward_rate['p_reward_right']/(pd_choice_reward_rate['p_reward_right']+pd_choice_reward_rate['p_reward_left'])
+pd_choice_reward_rate['total_reward_rage']=(pd_choice_reward_rate['p_reward_right']+pd_choice_reward_rate['p_reward_left'])
+needed = (pd_choice_reward_rate['total_reward_rage']< .5) & (pd_choice_reward_rate['session']>= minsession) & (pd_choice_reward_rate['block_choice_ratio']>-1) & (pd_choice_reward_rate['block_autowater_count']==0) & (pd_choice_reward_rate['block_length'] >= mintrialnum)
+pd_choice_reward_rate = pd_choice_reward_rate[needed] # unwanted blocks are deleted
+#%
+fig=plt.figure()
+
+ax_blocklenght=fig.add_axes([0,1,1,.8])
+out = ax_blocklenght.hist(pd_choice_reward_rate['block_length'],30)
+for idx,metricname in enumerate(metricnames):
+    relvals = np.sort(pd_choice_reward_rate['block_relative_value'].unique())
+    choice_ratio_mean = list()
+    choice_ratio_sd = list()
+    choice_ratio_median = list()
+    reward_rate_value = list()
+    for relval in relvals:
+        choice_rate_vals = pd_choice_reward_rate[metricname][pd_choice_reward_rate['block_relative_value']==relval]
+        choice_ratio_mean.append(choice_rate_vals.mean())
+        choice_ratio_median.append(choice_rate_vals.median())
+        choice_ratio_sd.append(float(np.std(choice_rate_vals.to_numpy())))
+        reward_rate_value.append(float(relval))
+    #%
+    
+    ax_1=fig.add_axes([0,-idx,1,.8])
+    ax_1.plot(pd_choice_reward_rate['block_relative_value'],pd_choice_reward_rate[metricname],'ko',markersize = 3)
+    ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+    ax_1.plot([0,1],[0,1],'k-')
+    ax_1.set_ylim([0, 1])
+    ax_1.set_xlim([0, 1])
+    ax_1.set_xlabel('relative value (p_R/(p_R+p_L))')
+    ax_1.set_ylabel('relative choice (c_R/(c_R+c_L))')
+    ax_1.set_title(metricname)
+    ax_2=fig.add_axes([1.2,-idx,1,.8])
+    ax_2.plot(pd_choice_reward_rate['block_length'],pd_choice_reward_rate[metricname]-pd_choice_reward_rate['block_relative_value'],'ko',markersize = 3)
 #%% show weight and water consumption of subjects over time
 df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
 subject_names = df_subject_wr['water_restriction_number'].unique()
