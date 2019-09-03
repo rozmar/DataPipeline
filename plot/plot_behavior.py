@@ -247,7 +247,7 @@ def plot_reward_rate(wr_name):
     ax1.set_title(wr_name)
     
     
-def plot_one_session(wr_name = 'FOR02',session = 23):
+def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
     df_session=pd.DataFrame(experiment.Session() & 'session = '+str(session) & 'subject_id = '+str(subject_id))
@@ -262,7 +262,6 @@ def plot_one_session(wr_name = 'FOR02',session = 23):
     df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
     df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
     
-    binsize = 5
     bias = list()
     for idx in range(len(df_behaviortrial)):
         if idx < round(binsize/2) or idx > len(df_behaviortrial)-round(binsize/2):
