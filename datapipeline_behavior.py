@@ -23,11 +23,13 @@ def populatemytables():
     behavioranal.SessionTrainingType().populate(**arguments)  
     behavioranal.SessionRewardRatio().populate(**arguments)  
     behavioranal.BlockRewardRatio().populate(**arguments)  
+    behavioranal.BlockChoiceRatio().populate(**arguments)  
+    behavioranal.BlockAutoWaterCount().populate(**arguments)  
     behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
     behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
 
 
-
+#%%
 def populatebehavior():
     df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
     #%% load pybpod data
