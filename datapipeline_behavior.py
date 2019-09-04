@@ -77,10 +77,11 @@ def populatebehavior():
                     session_date = datetime(int(date_now[0:4]),int(date_now[4:6]),int(date_now[6:8]))
                     experiment_name = experimentnames_now[session_idx]
                     csvfilename = (Path(session.path) / (Path(session.path).name + '.csv'))
-                    if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date > "'+str(session_date)+'"') != 0:
+                    if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date > "'+str(session_date)+'"') != 0: # if it is not the last
                         print('session already imported, skipping: ' + str(session_date))
-                    else: # reuploading only the LAST session that is present on the server
-                        if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted in the animal is still in training..
+                        dotheupload = False
+                    elif len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0: # if it is the last
+                        if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
                             print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
                             if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
                                 print('dropping last session')
@@ -89,7 +90,12 @@ def populatebehavior():
                                 session_todel.delete()
                                 dj.config['safemode'] = True
                             delete_last_session_before_upload = False
-                            
+                            dotheupload = True
+                        else:
+                            dotheupload = False
+                    else: # reuploading only the LAST session that is present on the server
+                        dotheupload = True
+                    if dotheupload:
                         df_behavior_session = behavior_rozmar.load_and_parse_a_csv_file(csvfilename)
                         if 'var:WaterPort_L_ch_in' in df_behavior_session.keys():# if the variables are not saved, they are inherited from the previous session
                             channel_L = df_behavior_session['var:WaterPort_L_ch_in'][0]
