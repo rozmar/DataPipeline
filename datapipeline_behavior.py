@@ -27,10 +27,10 @@ def populatemytables():
     behavioranal.BlockAutoWaterCount().populate(**arguments)  
     behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
     behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
-
+    behavioranal.SubjectFittedChoiceCoefficients.populate(**arguments)
 
 #%%
-def populatebehavior():
+def populatebehavior(drop_last_session_for_mice_in_training = True):
     df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
     #%% load pybpod data
     print('adding behavior experiments')
@@ -45,15 +45,20 @@ def populatebehavior():
         projects.append(Project())
         projects[-1].load(projectdir)
     
-    
+    #%%
     IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
+    #%%
     for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects
         print('subject: ',subject_now)
-        delete_last_session_before_upload = True
+        if drop_last_session_for_mice_in_training:
+            delete_last_session_before_upload = True
+        else:
+            delete_last_session_before_upload = False
         #df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
         df_wr = pd.read_csv(dj.config['locations.metadata']+subject_now+'.csv')
         for df_wr_row in df_wr.iterrows():
             if df_wr_row[1]['Time'] and df_wr_row[1]['Time-end'] and df_wr_row[1]['Training type'] != 'restriction' and df_wr_row[1]['Training type'] != 'handling': # we use it when both start and end times are filled in, restriction and handling is skipped
+                #%%
                 date_now = df_wr_row[1].Date.replace('-','')
                 print('date: ',date_now)
     
@@ -65,36 +70,38 @@ def populatebehavior():
                     for exp in exps:
                         stps = exp.setups
                         for stp in stps:
-                            sessions = stp.sessions
+                            #sessions = stp.sessions
                             for session in stp.sessions:
                                 if session.subjects and session.subjects[0].find(subject_now) >-1 and session.name.startswith(date_now):
                                     sessions_now.append(session)
                                     session_start_times_now.append(session.started)
                                     experimentnames_now.append(exp.name)
                 order = np.argsort(session_start_times_now)
+                #%%
+                session_date = datetime(int(date_now[0:4]),int(date_now[4:6]),int(date_now[6:8]))
+                if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date > "'+str(session_date)+'"') != 0: # if it is not the last
+                    print('session already imported, skipping: ' + str(session_date))
+                    dotheupload = False
+                elif len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0: # if it is the last
+                    if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
+                        print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
+                        if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
+                            print('dropping last session')
+                            session_todel =experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"'
+                            dj.config['safemode'] = False
+                            session_todel.delete()
+                            dj.config['safemode'] = True
+                        delete_last_session_before_upload = False
+                        dotheupload = True
+                    else:
+                        dotheupload = False
+                else: # reuploading new session that is not present on the server
+                    dotheupload = True
+                #%%
                 for session_idx in order:
                     session = sessions_now[session_idx]
-                    session_date = datetime(int(date_now[0:4]),int(date_now[4:6]),int(date_now[6:8]))
                     experiment_name = experimentnames_now[session_idx]
                     csvfilename = (Path(session.path) / (Path(session.path).name + '.csv'))
-                    if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date > "'+str(session_date)+'"') != 0: # if it is not the last
-                        print('session already imported, skipping: ' + str(session_date))
-                        dotheupload = False
-                    elif len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0: # if it is the last
-                        if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
-                            print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
-                            if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
-                                print('dropping last session')
-                                session_todel =experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"'
-                                dj.config['safemode'] = False
-                                session_todel.delete()
-                                dj.config['safemode'] = True
-                            delete_last_session_before_upload = False
-                            dotheupload = True
-                        else:
-                            dotheupload = False
-                    else: # reuploading only the LAST session that is present on the server
-                        dotheupload = True
                     if dotheupload:
                         df_behavior_session = behavior_rozmar.load_and_parse_a_csv_file(csvfilename)
                         if 'var:WaterPort_L_ch_in' in df_behavior_session.keys():# if the variables are not saved, they are inherited from the previous session
@@ -188,7 +195,7 @@ def populatebehavior():
                                                     blocknum = 1
                                                 else:
                                                     blocknum = len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) + 1
-                                                if blocknum>200:
+                                                if blocknum>100:
                                                     print('waiting.. there are way too many blocks')
                                                     timer.sleep(1000)
                                                 unique_blocknum = len(experiment.SessionBlock()) + 1
