@@ -361,19 +361,20 @@ class SubjectFittedChoiceCoefficients(dj.Computed):
                         data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
         label = np.array(label)
         data = np.matrix(data)
-        x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-        logisticRegr = LogisticRegression(solver = 'lbfgs')
-        logisticRegr.fit(x_train, y_train)
-        #predictions = logisticRegr.predict(x_test)
-        score = logisticRegr.score(x_test, y_test)        
-        coefficients = logisticRegr.coef_
-        coefficients = coefficients[0]
-        coeff_rewards = coefficients[trials_back-1::-1]
-        coeff_choices = coefficients[-1:trials_back-1:-1]
-        key['coefficients_rewards_subject'] = coeff_rewards
-        key['coefficients_choices_subject'] = coeff_choices
-        key['score_subject'] = score
-        self.insert1(key,skip_duplicates=True)    
+        if len(data) > 1:
+            x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+            logisticRegr = LogisticRegression(solver = 'lbfgs')
+            logisticRegr.fit(x_train, y_train)
+            #predictions = logisticRegr.predict(x_test)
+            score = logisticRegr.score(x_test, y_test)        
+            coefficients = logisticRegr.coef_
+            coefficients = coefficients[0]
+            coeff_rewards = coefficients[trials_back-1::-1]
+            coeff_choices = coefficients[-1:trials_back-1:-1]
+            key['coefficients_rewards_subject'] = coeff_rewards
+            key['coefficients_choices_subject'] = coeff_choices
+            key['score_subject'] = score
+            self.insert1(key,skip_duplicates=True)    
     
     
     
