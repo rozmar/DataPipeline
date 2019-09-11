@@ -9,11 +9,14 @@ scope = ['https://www.googleapis.com/auth/analytics.readonly',
       'https://www.googleapis.com/auth/drive',
       'https://www.googleapis.com/auth/spreadsheets',
       ]#['https://spreadsheets.google.com/feeds']
-creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
+#creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name('./creds/online_notebook_drive_api.json', scope)
 client = gspread.authorize(creds)
+creds_drive = ServiceAccountCredentials.from_json_keyfile_name('./creds/online_notebook_drive_api.json', scope)
 
 #%% open 
 def fetch_animal_metadata():
+    #%%
     wb = client.open("Surgery, water restriction and training")
     sheetnames = list()
     worksheets = wb.worksheets()
@@ -22,9 +25,11 @@ def fetch_animal_metadata():
     idx_main = sheetnames.index('Surgery')
     main_sheet = wb.get_worksheet(idx_main)
     df = pd.DataFrame(main_sheet.get_all_records())
+    #%%
     return df
 
 def fetch_water_restriction_metadata(ID):
+    #%%
     wb = client.open("Surgery, water restriction and training")
     sheetnames = list()
     worksheets = wb.worksheets()
@@ -32,14 +37,17 @@ def fetch_water_restriction_metadata(ID):
         sheetnames.append(sheet.title)
     idx_now = sheetnames.index(ID)
     if idx_now > -1:
-        sheet_now = wb.get_worksheet(idx_now)
-        temp = dict()
-        header = sheet_now.row_values(1)
-        for i,head in enumerate(header):
-            temp[head]=sheet_now.col_values(i+1)[1:]
-        df = pd.DataFrame.from_dict(temp, orient='index')
-        df.transpose()
-        df = df.transpose()
+        params = {'majorDimension':'ROWS'}
+        temp = wb.values_get(ID+'!A1:O100',params)
+        temp = temp['values']
+        header = temp.pop(0)
+        data = list()
+        for row in temp:
+            if len(row) < len(header):
+                row.append('')
+            if len(row) == len(header):
+                data.append(row)
+        df = pd.DataFrame(data, columns = header)
         return df
     else:
         return None
