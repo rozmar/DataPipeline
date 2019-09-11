@@ -246,9 +246,86 @@ def plot_reward_rate(wr_name):
     ax1.set_xlabel('trial#')
     ax1.set_title(wr_name)
     
+
+def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4,local_filter = np.ones(10),reward_ratio_binnum = 7):
+    
+    
+    
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {
+           'subject_id':subject_id,
+           'session': session,
+           }
+    df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
+
+    filter_now = local_filter[::-1]
+    
+    right_choice = (df_choices['trial_choice'] == 'right').values
+    left_choice = (df_choices['trial_choice'] == 'left').values
+    right_reward = ((df_choices['trial_choice'] == 'right')&(df_choices['outcome'] == 'hit')).values
+    left_reward = ((df_choices['trial_choice'] == 'left')&(df_choices['outcome'] == 'hit')).values
+    
+    right_choice_conv = np.convolve(right_choice , filter_now,mode = 'valid')
+    left_choice_conv = np.convolve(left_choice , filter_now,mode = 'valid')
+    right_reward_conv = np.convolve(right_reward , filter_now,mode = 'valid')
+    left_reward_conv = np.convolve(left_reward , filter_now,mode = 'valid')
+    
+    right_choice = right_choice[len(filter_now)-1:]
+    left_choice = left_choice[len(filter_now)-1:]
+    
+    choice_num = np.ones(len(left_choice))
+    choice_num[:]=np.nan
+    choice_num[left_choice] = 0
+    choice_num[right_choice] = 1
+    
+    reward_ratio_right = right_reward_conv/right_choice_conv
+    reward_ratio_right[np.isnan(reward_ratio_right)] = 0
+    reward_ratio_left = left_reward_conv/left_choice_conv
+    reward_ratio_left[np.isnan(reward_ratio_left)] = 0
+    reward_ratio_combined = reward_ratio_right/(reward_ratio_right+reward_ratio_left)
+    
+    
+    todel = np.isnan(reward_ratio_combined)
+    reward_ratio_combined = reward_ratio_combined[~todel]
+    choice_num = choice_num[~todel]
+    todel = np.isnan(choice_num)
+    reward_ratio_combined = reward_ratio_combined[~todel]
+    choice_num = choice_num[~todel]
+    #%%
+    bottoms = np.arange(0,100, 100/reward_ratio_binnum)
+    tops = np.arange(100/reward_ratio_binnum,100.005, 100/reward_ratio_binnum)
+    #%%
+    reward_ratio_mean = list()
+    reward_ratio_sd = list()
+    choice_ratio_mean = list()
+    choice_ratio_sd = list()
+    for bottom,top in zip(bottoms,tops):
+        if bottom <0:
+            bottom =0
+        if top > 100:
+            top = 100
+        minval = np.percentile(reward_ratio_combined,bottom)
+        maxval = np.percentile(reward_ratio_combined,top)
+        if minval == maxval:
+            idx = (reward_ratio_combined== minval)
+        else:
+            idx = (reward_ratio_combined>= minval) & (reward_ratio_combined < maxval)
+        reward_ratio_mean.append(np.mean(reward_ratio_combined[idx]))
+        reward_ratio_sd.append(np.std(reward_ratio_combined[idx]))
+        choice_ratio_mean.append(np.mean(choice_num[idx]))
+        choice_ratio_sd.append(np.std(choice_num[idx]))
+    fig=plt.figure()
+    ax1=fig.add_axes([0,0,1,.8])
+    ax1.errorbar(reward_ratio_mean,choice_ratio_mean,choice_ratio_sd,reward_ratio_sd,'ko-') 
+    ax1.set_xlabel('Local fractional income')
+    ax1.set_ylabel('Choice ratio')
+
     
 def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
+    
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    if session == 'last':
+        session = np.max((experiment.Session() & 'subject_id = '+str(subject_id)).fetch('session'))
     df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
     df_session=pd.DataFrame(experiment.Session() & 'session = '+str(session) & 'subject_id = '+str(subject_id))
     df_session
@@ -314,6 +391,7 @@ def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
     ax1.plot(df_behaviortrial['trial'],df_behaviortrial['reward_ratio'],'y-')
     ax1.set_yticks((0,1))
     ax1.set_yticklabels(('left','right'))
+    ax1.set_title(wr_name + '   -   session: ' + str(session))
     
     ax2=fig.add_axes([0,-1,2,.8])
     ax2.plot(df_behaviortrial['trial'],df_behaviortrial['p_reward_left'],'r-')
@@ -321,7 +399,9 @@ def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
     ax2.set_ylabel('Reward probability')
     ax2.set_xlabel('Trial #')
     ax2.legend(['left','right'])
-
+    
+    
+    plot_local_psychometric_curve(wr_name = wr_name ,session = session)
 #ax1.set_xlim(00, 600)
 #ax2.set_xlim(00, 600)
     
