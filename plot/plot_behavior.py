@@ -249,14 +249,14 @@ def plot_reward_rate(wr_name):
 
 def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4,local_filter = np.ones(10),reward_ratio_binnum = 7):
     
-    
+#%%    
     
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     key = {
            'subject_id':subject_id,
            'session': session,
            }
-    df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
+    df_choices = pd.DataFrame((experiment.BehaviorTrial()&key)*(experiment.SessionBlock()&key))
 
     filter_now = local_filter[::-1]
     
@@ -315,29 +315,60 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4,local_filter = n
         choice_ratio_mean.append(np.mean(choice_num[idx]))
         choice_ratio_sd.append(np.std(choice_num[idx]))
     fig=plt.figure()
-    ax1=fig.add_axes([0,0,1,.8])
+    ax1=fig.add_axes([0,0,.8,.8])
+    ax1.plot([0,1],[0,1],'k-') 
     ax1.errorbar(reward_ratio_mean,choice_ratio_mean,choice_ratio_sd,reward_ratio_sd,'ko-') 
     ax1.set_xlabel('Local fractional income')
     ax1.set_ylabel('Choice ratio')
-
     
+    
+    
+    
+    right_choice = (df_choices['trial_choice'] == 'right').values
+    left_choice = (df_choices['trial_choice'] == 'left').values    
+    
+    right_p_value = df_choices['p_reward_right'].values
+    left_p_value = df_choices['p_reward_left'].values
+    sum_p_value = right_p_value + left_p_value
+    blockswitch = np.where(np.diff(right_p_value))[0]
+    
+    ax2=fig.add_axes([1,0,.8,.8])
+    
+    ax2.plot(left_choice.cumsum(),right_choice.cumsum(),'k-')
+    ax2.plot((left_p_value/sum_p_value).cumsum(),(right_p_value/sum_p_value).cumsum(),'g-')
+    ax2.plot(left_choice.cumsum()[blockswitch],right_choice.cumsum()[blockswitch],'ko',markerfacecolor=(0,0, 0, 0),markeredgecolor = (0,0,0,1))
+    ax2.plot((left_p_value/sum_p_value).cumsum()[blockswitch],(right_p_value/sum_p_value).cumsum()[blockswitch],'go',markerfacecolor=(0,1, 0, 0),markeredgecolor = (0,1,0,1))
+
+    ax2.set_xlabel('Cumulative left choices')
+    ax2.set_ylabel('Cumulative right choices')
+    ax2.legend(['Choices','Income ratio'])
+ #%%   
 def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
     
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     if session == 'last':
         session = np.max((experiment.Session() & 'subject_id = '+str(subject_id)).fetch('session'))
-    df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
+        df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
+        while len(df_behaviortrial)<5:
+            session -= 1
+            df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
+    else:
+        df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
     df_session=pd.DataFrame(experiment.Session() & 'session = '+str(session) & 'subject_id = '+str(subject_id))
     df_session
     df_behaviortrial['trial_choice_plot'] = np.nan
-    df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='left']=0
-    df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
+    #df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='left']=0
+    df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'left', 'trial_choice_plot'] = 0
+    #df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
+    df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'right', 'trial_choice_plot'] = 1
     df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
     
-    df_behaviortrial['trial_choice_plot'] = np.nan
-    df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='left']=0
-    df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
-    df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
+# =============================================================================
+#     df_behaviortrial['trial_choice_plot'] = np.nan
+#     df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='left']=0
+#     df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
+#     df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
+# =============================================================================
     
     bias = list()
     for idx in range(len(df_behaviortrial)):
@@ -380,14 +411,14 @@ def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
     rewardratio_L = np.array(rewardratio_L)
     rewardratio_L[np.isnan(rewardratio_L)]=0
     rewardratio_R[np.isnan(rewardratio_R)]=0
-    
-    
+    rewardratio_sum = rewardratio_R+rewardratio_L
+    rewardratio_sum[rewardratio_sum == 0] = np.nan
     fig=plt.figure()
     ax1=fig.add_axes([0,0,2,1])
     ax1.plot(df_behaviortrial['trial'][rewarded],df_behaviortrial['trial_choice_plot'][rewarded],'k|',color='black',markersize=30,markeredgewidth=2)
     ax1.plot(df_behaviortrial['trial'][unrewarded],df_behaviortrial['trial_choice_plot'][unrewarded],'|',color='gray',markersize=15,markeredgewidth=2)
     ax1.plot(df_behaviortrial['trial'],bias,'k-')
-    ax1.plot(df_behaviortrial['trial'],rewardratio_R / (rewardratio_R+rewardratio_L),'g-')
+    ax1.plot(df_behaviortrial['trial'],rewardratio_R / rewardratio_sum,'g-')
     ax1.plot(df_behaviortrial['trial'],df_behaviortrial['reward_ratio'],'y-')
     ax1.set_yticks((0,1))
     ax1.set_yticklabels(('left','right'))
