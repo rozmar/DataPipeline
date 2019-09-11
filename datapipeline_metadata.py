@@ -36,6 +36,10 @@ def populatemetadata():
             {
             'username' : 'Tina',
             'fullname' : 'Tina Pluntke'
+            },
+            {
+            'username' : 'NT',
+            'fullname' : 'Nai-Wen Tien'
             }
             ]
     for experimenternow in experimenterdata:
