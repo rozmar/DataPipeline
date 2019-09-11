@@ -14,9 +14,10 @@ dj.conn()
 from pipeline import pipeline_tools
 from pipeline import lab, experiment
 from pipeline import behavioranal
-  
-def populatemytables():
-    arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
+import ray
+
+@ray.remote
+def populatemytables_core(arguments):
     behavioranal.TrialReactionTime().populate(**arguments)
     behavioranal.SessionReactionTimeHistogram().populate(**arguments)
     behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
@@ -29,6 +30,20 @@ def populatemytables():
     behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
     behavioranal.SubjectFittedChoiceCoefficients.populate(**arguments)
 
+
+def populatemytables(paralel = True, cores = 6):
+    if paralel:
+        arguments = {'display_progress' : False, 'reserve_jobs' : True,'order' : 'random'}
+        ray.init()
+        result_ids = []
+        for coreidx in range(cores):
+            result_ids.append(populatemytables_core.remote(arguments))        
+        results = ray.get(result_ids)
+        ray.shutdown()
+    else:
+        arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
+        populatemytables_core(arguments)
+   
 #%%
 def populatebehavior(drop_last_session_for_mice_in_training = True):
     df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
