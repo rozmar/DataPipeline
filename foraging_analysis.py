@@ -6,8 +6,81 @@ from pipeline import pipeline_tools, lab, experiment, behavioranal
 dj.conn()
 import matplotlib.pyplot as plt
 import decimal
-#%% foraging tuning curves
-wr_name = 'FOR04'
+
+#%% foraging tuning curves based on local reward rate!!! IMPLEMENT ME!!!
+local_filter = np.ones(10)
+wr_name = 'FOR08'
+session = 4
+subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+key = {
+       'subject_id':subject_id,
+       'session': session,
+       }
+df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
+#%
+reward_ratio_binnum = 10
+filter_now = local_filter[::-1]
+
+
+
+
+right_choice = (df_choices['trial_choice'] == 'right').values
+left_choice = (df_choices['trial_choice'] == 'left').values
+right_reward = ((df_choices['trial_choice'] == 'right')&(df_choices['outcome'] == 'hit')).values
+left_reward = ((df_choices['trial_choice'] == 'left')&(df_choices['outcome'] == 'hit')).values
+
+right_choice_conv = np.convolve(right_choice , filter_now,mode = 'valid')
+left_choice_conv = np.convolve(left_choice , filter_now,mode = 'valid')
+right_reward_conv = np.convolve(right_reward , filter_now,mode = 'valid')
+left_reward_conv = np.convolve(left_reward , filter_now,mode = 'valid')
+
+right_choice = right_choice[len(filter_now)-1:]
+left_choice = left_choice[len(filter_now)-1:]
+
+choice_num = np.ones(len(left_choice))
+choice_num[:]=np.nan
+choice_num[left_choice] = 0
+choice_num[right_choice] = 1
+
+reward_ratio_right = right_reward_conv/right_choice_conv
+reward_ratio_right[np.isnan(reward_ratio_right)] = 0
+reward_ratio_left = left_reward_conv/left_choice_conv
+reward_ratio_left[np.isnan(reward_ratio_left)] = 0
+reward_ratio_combined = reward_ratio_right/(reward_ratio_right+reward_ratio_left)
+
+
+todel = np.isnan(reward_ratio_combined)
+reward_ratio_combined = reward_ratio_combined[~todel]
+choice_num = choice_num[~todel]
+todel = np.isnan(choice_num)
+reward_ratio_combined = reward_ratio_combined[~todel]
+choice_num = choice_num[~todel]
+
+bottoms = np.arange(0,100, 100/reward_ratio_binnum)
+tops = np.arange(100/reward_ratio_binnum,100.005, 100/reward_ratio_binnum)
+
+reward_ratio_mean = list()
+reward_ratio_sd = list()
+choice_ratio_mean = list()
+choice_ratio_sd = list()
+for bottom,top in zip(bottoms,tops):
+    minval = np.percentile(reward_ratio_combined,bottom)
+    maxval = np.percentile(reward_ratio_combined,top)
+    if minval == maxval:
+        idx = (reward_ratio_combined== minval)
+    else:
+        idx = (reward_ratio_combined>= minval) & (reward_ratio_combined < maxval)
+    reward_ratio_mean.append(np.mean(reward_ratio_combined[idx]))
+    reward_ratio_sd.append(np.std(reward_ratio_combined[idx]))
+    choice_ratio_mean.append(np.mean(choice_num[idx]))
+    choice_ratio_sd.append(np.std(choice_num[idx]))
+    
+plt.errorbar(reward_ratio_mean,choice_ratio_mean,choice_ratio_sd,reward_ratio_sd)    
+
+
+
+#%% foraging tuning curves based on block
+wr_name = 'FOR01'
 minsession = 8
 mintrialnum = 50
 metricnames = ['block_choice_ratio','block_choice_ratio_first_tertile','block_choice_ratio_second_tertile','block_choice_ratio_third_tertile']
@@ -28,6 +101,9 @@ fig=plt.figure()
 
 ax_blocklenght=fig.add_axes([0,1,1,.8])
 out = ax_blocklenght.hist(pd_choice_reward_rate['block_length'],30)
+ax_blocklenght.set_xlabel('Block length (trials)')
+ax_blocklenght.set_ylabel('Count')
+ax_blocklenght.set_title(wr_name)
 for idx,metricname in enumerate(metricnames):
     relvals = np.sort(pd_choice_reward_rate['block_relative_value'].unique())
     choice_ratio_mean = list()
@@ -43,8 +119,8 @@ for idx,metricname in enumerate(metricnames):
     #%
     
     ax_1=fig.add_axes([0,-idx,1,.8])
-    ax_1.plot(pd_choice_reward_rate['block_relative_value'],pd_choice_reward_rate[metricname],'ko',markersize = 3)
     ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+    ax_1.plot(pd_choice_reward_rate['block_relative_value'],pd_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
     ax_1.plot([0,1],[0,1],'k-')
     ax_1.set_ylim([0, 1])
     ax_1.set_xlim([0, 1])
