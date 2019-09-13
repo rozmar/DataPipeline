@@ -278,11 +278,16 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4,local_filter = n
     choice_num[left_choice] = 0
     choice_num[right_choice] = 1
     
+    
+    right_choice_conv[right_choice_conv==0] = np.nan
+    left_choice_conv[left_choice_conv==0] = np.nan
     reward_ratio_right = right_reward_conv/right_choice_conv
     reward_ratio_right[np.isnan(reward_ratio_right)] = 0
     reward_ratio_left = left_reward_conv/left_choice_conv
     reward_ratio_left[np.isnan(reward_ratio_left)] = 0
-    reward_ratio_combined = reward_ratio_right/(reward_ratio_right+reward_ratio_left)
+    reward_ratio_sum = (reward_ratio_right+reward_ratio_left)
+    reward_ratio_sum[reward_ratio_sum==0]= np.nan
+    reward_ratio_combined = reward_ratio_right/reward_ratio_sum
     
     
     todel = np.isnan(reward_ratio_combined)
@@ -343,17 +348,17 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4,local_filter = n
     ax2.set_ylabel('Cumulative right choices')
     ax2.legend(['Choices','Income ratio'])
  #%%   
-def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
-    
+def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5,local_filter = np.ones(10)):
+    #%%
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     if session == 'last':
         session = np.max((experiment.Session() & 'subject_id = '+str(subject_id)).fetch('session'))
-        df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
+        df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()* behavioranal.TrialReactionTime).fetch())
         while len(df_behaviortrial)<5:
             session -= 1
-            df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
+            df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock() * behavioranal.TrialReactionTime).fetch())
     else:
-        df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()).fetch())
+        df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()* behavioranal.TrialReactionTime).fetch())
     df_session=pd.DataFrame(experiment.Session() & 'session = '+str(session) & 'subject_id = '+str(subject_id))
     df_session
     df_behaviortrial['trial_choice_plot'] = np.nan
@@ -362,7 +367,7 @@ def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
     #df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
     df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'right', 'trial_choice_plot'] = 1
     df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
-    
+    #%%
 # =============================================================================
 #     df_behaviortrial['trial_choice_plot'] = np.nan
 #     df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='left']=0
@@ -431,8 +436,12 @@ def plot_one_session(wr_name = 'FOR02',session = 23, binsize = 5):
     ax2.set_xlabel('Trial #')
     ax2.legend(['left','right'])
     
-    
-    plot_local_psychometric_curve(wr_name = wr_name ,session = session)
+    ax3=fig.add_axes([0,-2,2,.8])
+    ax3.plot(df_behaviortrial['trial'],df_behaviortrial['reaction_time'],'ko')
+    ax3.set_ylim([0, .5])
+    ax3.set_ylabel('Reaction time (s)')
+    ax3.set_xlabel('Trial #')
+    plot_local_psychometric_curve(wr_name = wr_name ,session = session, local_filter=local_filter)
 #ax1.set_xlim(00, 600)
 #ax2.set_xlim(00, 600)
     
