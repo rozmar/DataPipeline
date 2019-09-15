@@ -138,8 +138,8 @@ class SessionTrial(dj.Imported):
     trial : smallint 		# trial number
     ---
     trial_uid : int  # unique across sessions/animals
-    trial_start_time : decimal(8, 4)  # (s) relative to session beginning 
-    trial_stop_time : decimal(8, 4)  # (s) relative to session beginning 
+    trial_start_time : decimal(10, 4)  # (s) relative to session beginning 
+    trial_stop_time : decimal(10, 4)  # (s) relative to session beginning 
     """
 
 @schema 
@@ -147,7 +147,7 @@ class TrialNoteType(dj.Lookup):
     definition = """
     trial_note_type : varchar(12)
     """
-    contents = zip(('autolearn', 'protocol #', 'bad', 'bitcode','autowater'))
+    contents = zip(('autolearn', 'protocol #', 'bad', 'bitcode','autowater','random_seed_start'))
 
 
 @schema
@@ -158,7 +158,6 @@ class TrialNote(dj.Imported):
     ---
     trial_note  : varchar(255) 
     """
-
 
 @schema
 class TrainingType(dj.Lookup):
@@ -206,6 +205,7 @@ class SessionDetails(dj.Manual):
     session_water_earned : decimal(8,4)
     session_water_extra : decimal(8,4)
     """
+
 
 @schema
 class Period(dj.Lookup):
@@ -259,6 +259,17 @@ class EarlyLick(dj.Lookup):
         ('early, presample only', 'early lick in the presample period, after the onset of the scheduled wave but before the sample period'),
         ('no early', '')]
 
+@schema
+class WaterValveData(dj.Imported):
+    definition = """
+    -> SessionTrial
+    ----
+    water_valve_lateral_pos: int
+    water_valve_rostrocaudal_pos: int
+    water_valve_dorsoventral_pos: int
+    water_valve_time_left: decimal(5,4)
+    water_valve_time_right: decimal(5,4)
+    """
 
 @schema
 class BehaviorTrial(dj.Imported):
