@@ -31,7 +31,10 @@ def populateelphys():
         for session_acq in sessions.keys():
             if session_acq != '.' and session_acq != 'log.txt':
                 session_dir = setup_dir.joinpath(session_acq)
-                cells = configfile.readConfigFile(session_dir.joinpath('.index'))
+                try:
+                    cells = configfile.readConfigFile(session_dir.joinpath('.index'))
+                except: # if there is no file
+                    break
                 wrname_ephys = cells['.']['WR_name/ID']
                 wrname = None
                 for wrname_potential in subject_names:
