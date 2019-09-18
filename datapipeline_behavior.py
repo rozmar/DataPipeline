@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta, time
 import pandas as pd
 from pathlib import Path
@@ -12,10 +11,10 @@ import decimal
 import datajoint as dj
 dj.conn()
 from pipeline import pipeline_tools
-from pipeline import lab, experiment
-from pipeline import behavioranal
+from pipeline import lab, experiment,ephys_patch
+from pipeline import behavioranal, ephysanal
 import ray
-
+#%%
 @ray.remote
 def populatemytables_core(arguments):
     behavioranal.TrialReactionTime().populate(**arguments)
@@ -38,44 +37,77 @@ def populatemytables(paralel = True, cores = 6):
         result_ids = []
         for coreidx in range(cores):
             result_ids.append(populatemytables_core.remote(arguments))        
-        results = ray.get(result_ids)
+        ray.get(result_ids)
         ray.shutdown()
     else:
         arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
         populatemytables_core(arguments)
-   
-#%%
-def populatebehavior(drop_last_session_for_mice_in_training = True):
-    df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
-    #%% load pybpod data
+
+def populatebehavior(paralel = True,drop_last_session_for_mice_in_training = True):
     print('adding behavior experiments')
+    if paralel:
+        ray.init()
+        result_ids = []
+        IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
+        df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
+        for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects      and removing last session      
+            if drop_last_session_for_mice_in_training == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
+                print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
+                if len((experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"').fetch('session')) > 0:
+                    sessiontodel = np.max((experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"').fetch('session'))
+                    session_todel = experiment.Session() & 'subject_id = "' + str(subject_id_now)+'"' & 'session = ' + str(sessiontodel)
+                    dj.config['safemode'] = False
+                    session_todel.delete()
+                    dj.config['safemode'] = True   
+        for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects                       
+            dict_now = dict()
+            dict_now[subject_now] = subject_id_now
+            result_ids.append(populatebehavior_core.remote(dict_now))    
+        ray.get(result_ids)
+        ray.shutdown()
+    else:
+        populatebehavior_core(drop_last_session_for_mice_in_training = drop_last_session_for_mice_in_training)
+
+
+# =============================================================================
+# IDs = None
+# =============================================================================
+@ray.remote
+def populatebehavior_core(IDs = None):
+    if IDs:
+        print('subject started:')
+        print(IDs.keys())
+        print(IDs.values())
     directories = dict()
     directories = {'behavior_project_dirs' : ['/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging',
                                               '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging_again',
                                               '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging_homecage',
-                                              '/home/rozmar/Data/Behavior/Behavior_room/Tower-3/Foraging_homecage']
+                                              '/home/rozmar/Data/Behavior/Behavior_room/Tower-3/Foraging_homecage',
+                                              '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging',]
         }
     projects = list()
     for projectdir in directories['behavior_project_dirs']:
         projects.append(Project())
         projects[-1].load(projectdir)
-    
-    #%%
-    IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
+    #df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
+    if IDs == None:
+        IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
     #%%
     for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects
         print('subject: ',subject_now)
-        if drop_last_session_for_mice_in_training:
-            delete_last_session_before_upload = True
-        else:
-            delete_last_session_before_upload = False
-        #df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
+    # =============================================================================
+    #         if drop_last_session_for_mice_in_training:
+    #             delete_last_session_before_upload = True
+    #         else:
+    #             delete_last_session_before_upload = False
+    #         #df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
+    # =============================================================================
         df_wr = pd.read_csv(dj.config['locations.metadata']+subject_now+'.csv')
         for df_wr_row in df_wr.iterrows():
-            if df_wr_row[1]['Time'] and df_wr_row[1]['Time-end'] and df_wr_row[1]['Training type'] != 'restriction' and df_wr_row[1]['Training type'] != 'handling': # we use it when both start and end times are filled in, restriction and handling is skipped
+            if df_wr_row[1]['Time'] and type(df_wr_row[1]['Time'])==str and df_wr_row[1]['Time-end'] and type(df_wr_row[1]['Time-end'])==str and df_wr_row[1]['Training type'] != 'restriction' and df_wr_row[1]['Training type'] != 'handling': # we use it when both start and end times are filled in, restriction and handling is skipped
                 #%%
                 date_now = df_wr_row[1].Date.replace('-','')
-                print('date: ',date_now)
+                print('subject: ',subject_now,'  date: ',date_now)
     
                 sessions_now = list()
                 session_start_times_now = list()
@@ -98,18 +130,21 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                     print('session already imported, skipping: ' + str(session_date))
                     dotheupload = False
                 elif len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0: # if it is the last
-                    if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
-                        print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
-                        if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
-                            print('dropping last session')
-                            session_todel =experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"'
-                            dj.config['safemode'] = False
-                            session_todel.delete()
-                            dj.config['safemode'] = True
-                        delete_last_session_before_upload = False
-                        dotheupload = True
-                    else:
-                        dotheupload = False
+                    dotheupload = False
+    # =============================================================================
+    #                     if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
+    #                         print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
+    #                         if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
+    #                             print('dropping last session')
+    #                             session_todel =experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"'
+    #                             dj.config['safemode'] = False
+    #                             session_todel.delete()
+    #                             dj.config['safemode'] = True
+    #                         delete_last_session_before_upload = False
+    #                         dotheupload = True
+    #                     else:
+    #                         dotheupload = False
+    # =============================================================================
                 else: # reuploading new session that is not present on the server
                     dotheupload = True
                 #%%
@@ -129,6 +164,8 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                                 setupname = 'Training-Tower-2'
                             elif session.setup_name.lower() in ['tower-3']:
                                 setupname = 'Training-Tower-3'
+                            elif session.setup_name.lower() in ['tower-1']:
+                                setupname = 'Training-Tower-1'
                             else:
                                 setupname = 'unhandled'
                                 print('setup name not handled:'+session.setup_name)                                
@@ -163,12 +200,16 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                                         'session_water_extra' : df_wr_row[1]['Extra water']
                                         }
                                 experiment.SessionDetails().insert1(sessiondetailsdata)
-                            print(date_now + ' - ' + session.task_name)
+                            #print(date_now + ' - ' + session.task_name)
                             session_now = (experiment.Session() & 'subject_id = "'+str(sessiondata['subject_id'])+'"' & 'session_date = "'+str(sessiondata['session_date'])+'"').fetch()
                             session_start_time = datetime.combine(session_now['session_date'][0],datetime.min.time()) +session_now['session_time'][0]
                             #% extracting trial data
                             trial_start_idxs = df_behavior_session[(df_behavior_session['TYPE'] == 'TRIAL') & (df_behavior_session['MSG'] == 'New trial')].index
-                            trial_end_idxs = df_behavior_session[(df_behavior_session['TYPE'] == 'END-TRIAL')].index
+                            trial_start_idxs = pd.Index([0]).append(trial_start_idxs[1:]) # so the random seed will be present
+                            trial_end_idxs = trial_start_idxs[1:].append(pd.Index([(max(df_behavior_session.index))]))
+                            #trial_end_idxs = df_behavior_session[(df_behavior_session['TYPE'] == 'END-TRIAL')].index
+                            prevtrialstarttime = np.nan
+                            blocknum_local_prev = np.nan
                             for trial_start_idx,trial_end_idx in zip(trial_start_idxs,trial_end_idxs) :
                                 df_behavior_trial = df_behavior_session[trial_start_idx:trial_end_idx+1]
                                 #Trials without GoCue  are skipped
@@ -176,7 +217,9 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                 
                                     trial_start_time = df_behavior_session['PC-TIME'][trial_start_idx].to_pydatetime() - session_start_time
                                     trial_stop_time = df_behavior_session['PC-TIME'][trial_end_idx].to_pydatetime() - session_start_time
-                                    if len(experiment.SessionTrial() & 'session =' + str(session_now['session'][0]) & 'trial_start_time ="' + str(trial_start_time) + '"') == 0:# importing if this trial is not already imported
+                                    trial_start_time_decimal = decimal.Decimal(trial_start_time.total_seconds()).quantize(decimal.Decimal('.0001'))
+                                    if len(experiment.SessionTrial() & 'session =' + str(session_now['session'][0]) & 'trial_start_time ="' + str(trial_start_time_decimal) + '"') == 0 and trial_start_time != prevtrialstarttime:# importing if this trial is not already imported
+                                        prevtrialstarttime = trial_start_time
                                         trialnum = len(experiment.SessionTrial() & 'session =' + str(session_now['session'][0]) & 'subject_id = "' + str(subject_id_now) + '"') + 1
                                         unique_trialnum = len(experiment.SessionTrial()) + 1 
                                         sessiontrialdata={
@@ -190,8 +233,16 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                                         experiment.SessionTrial().insert1(sessiontrialdata, allow_direct_insert=True)
                                         
                                         #%%
-                                        if 'Block_number' in df_behavior_session.columns and not np.isnan(df_behavior_trial['Block_number'].to_list()[0]):
+                                        if 'Block_number' in df_behavior_session.columns and np.isnan(df_behavior_trial['Block_number'].to_list()[0]):
+                                            if np.isnan(blocknum_local_prev):
+                                                blocknum_local = 0
+                                            else:
+                                                blocknum_local = blocknum_local_prev
+                                        elif 'Block_number' in df_behavior_session.columns:
                                             blocknum_local = int(df_behavior_trial['Block_number'].to_list()[0])-1
+                                            blocknum_local_prev  = blocknum_local
+                                            
+                                        if 'Block_number' in df_behavior_session.columns:# and not np.isnan(df_behavior_trial['Block_number'].to_list()[0]):
                                             p_reward_left = decimal.Decimal(df_behavior_trial['var:reward_probabilities_L'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
                                             p_reward_right = decimal.Decimal(df_behavior_trial['var:reward_probabilities_R'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
                                             if len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) == 0:
@@ -227,7 +278,7 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                                                     'p_reward_right' : p_reward_right
                                                     }
                                                 experiment.SessionBlock().insert1(sessionblockdata, allow_direct_insert=True)
-                                                print('new block added: ' + str (block_start_time))
+                                                #print('new block added: ' + str (block_start_time))
                                             blocknum_now = (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])).fetch('block').max()
                                         else:
                                             blocknum_now = None
@@ -244,7 +295,9 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                                                     task_protocol = 13
                                                 else:
                                                     task_protocol = 12
-                                        elif experiment_name in ['Delayed_foraging','Delayed foraging','Foraging_homecage']:
+                                            elif trialnum == 1: # if can't inherit, we guess a protocol..
+                                                task_protocol = 12
+                                        elif experiment_name in ['Delayed_foraging','Delayed foraging','Foraging_homecage','Foraging']:
                                             task = 'del foraging'
                                             if 'var:early_lick_punishment' in df_behavior_session.keys():# inherits task protocol if variables are not available
                                                 if df_behavior_session['var:early_lick_punishment'][0] and df_behavior_session['var:motor_retract_waterport'][0]:
@@ -255,11 +308,14 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                                                     task_protocol = 16
                                                 else:
                                                     task_protocol = 15
+                                            elif trialnum == 1: # if can't inherit, we guess a protocol..
+                                                task_protocol = 15
                                         else:
+                                            #%
                                             task = np.nan
                                             task_protocol = 'nan' 
                                             print('task name not handled:'+experiment_name)
-                                        
+                                        #%%
                                         if any((df_behavior_trial['MSG'] == 'Choice_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
                                             trial_choice = 'left'
                                         elif any((df_behavior_trial['MSG'] == 'Choice_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')): 
@@ -297,35 +353,86 @@ def populatebehavior(drop_last_session_for_mice_in_training = True):
                                         if blocknum_now:
                                             behaviortrialdata['block'] = blocknum_now
                                         experiment.BehaviorTrial().insert1(behaviortrialdata, allow_direct_insert=True)
-                                        ##%
+                                        ##% 
                                         trialnotedata = None
-                                        if any((df_behavior_trial['MSG'] == 'Auto_Water_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')) and any((df_behavior_trial['MSG'] == 'Auto_Water_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
-                                            trialnotedata = {
-                                                  'subject_id': subject_id_now,
-                                                  'session': session_now['session'][0],
-                                                  'trial': trialnum,
-                                                  'trial_note_type': 'autowater',
-                                                  'trial_note': 'left and right'
-                                                  }
-                                        elif any((df_behavior_trial['MSG'] == 'Auto_Water_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
-                                            trialnotedata = {
-                                                  'subject_id': subject_id_now,
-                                                  'session': session_now['session'][0],
-                                                  'trial': trialnum,
-                                                  'trial_note_type': 'autowater',
-                                                  'trial_note': 'left'
-                                                  }
-                                        elif any((df_behavior_trial['MSG'] == 'Auto_Water_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
-                                            trialnotedata = {
-                                                  'subject_id': subject_id_now,
-                                                  'session': session_now['session'][0],
-                                                  'trial': trialnum,
-                                                  'trial_note_type': 'autowater',
-                                                  'trial_note': 'right'
-                                                  }
+                                        #%% add autowater
+                                        if any((df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_L')) or any((df_behavior_trial['TYPE'] == 'STATE') &(df_behavior_trial['MSG'] == 'Auto_Water_R')):
+                                            Lidx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_L')
+                                            Lidx = Lidx.idxmax()
+                                            Ridx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_R')
+                                            Ridx = Ridx.idxmax()
+                                            #%%
+                                            if float(df_behavior_trial['+INFO'][Ridx])>.001 and float(df_behavior_trial['+INFO'][Lidx])>.001:
+                                                trialnotedata = {
+                                                        'subject_id': subject_id_now,
+                                                        'session': session_now['session'][0],
+                                                        'trial': trialnum,
+                                                        'trial_note_type': 'autowater',
+                                                        'trial_note': 'left and right'
+                                                        }
+                                            elif float(df_behavior_trial['+INFO'][Lidx])>.001:
+                                                trialnotedata = {
+                                                        'subject_id': subject_id_now,
+                                                        'session': session_now['session'][0],
+                                                        'trial': trialnum,
+                                                        'trial_note_type': 'autowater',
+                                                        'trial_note': 'left'
+                                                        }
+                                            elif float(df_behavior_trial['+INFO'][Ridx])>.001:
+                                                trialnotedata = {
+                                                        'subject_id': subject_id_now,
+                                                        'session': session_now['session'][0],
+                                                        'trial': trialnum,
+                                                        'trial_note_type': 'autowater',
+                                                        'trial_note': 'right'
+                                                        }
+                                            else:
+                                                print('autowater error, please check!!!')
+                                                timer.sleep(1000)
+    
                                         if trialnotedata:
                                             experiment.TrialNote().insert1(trialnotedata, allow_direct_insert=True)
-                                        
+                                        #%% add random seed start
+                                        trialnotedata = None
+                                        if any(df_behavior_trial['MSG'] == 'Random seed:'):
+                                            seedidx = (df_behavior_trial['MSG'] == 'Random seed:').idxmax() + 1
+                                            trialnotedata = {
+                                                        'subject_id': subject_id_now,
+                                                        'session': session_now['session'][0],
+                                                        'trial': trialnum,
+                                                        'trial_note_type': 'random_seed_start',
+                                                        'trial_note': str(df_behavior_trial['MSG'][seedidx])
+                                                        }
+                                            experiment.TrialNote().insert1(trialnotedata, allow_direct_insert=True)
+                                        #%% add watervalve data
+                                        if 'var_motor:LickPort_Lateral_pos' in df_behavior_trial.keys():
+                                            water_valve_lateral_pos = df_behavior_trial['var_motor:LickPort_Lateral_pos'].values[0]
+                                        else:
+                                            water_valve_lateral_pos = 0
+                                        if 'var_motor:LickPort_RostroCaudal_pos' in df_behavior_trial.keys():
+                                            water_valve_rostrocaudal_pos = df_behavior_trial['var_motor:LickPort_RostroCaudal_pos'].values[0]
+                                        else:
+                                            water_valve_rostrocaudal_pos = 0
+                                        water_valve_dorsoventral_pos = 0
+                                        if 'var:ValveOpenTime_L' in df_behavior_trial.keys():
+                                            water_valve_time_left = df_behavior_trial['var:ValveOpenTime_L'].values[0]
+                                        else:
+                                            water_valve_time_left = -1
+                                        if 'var:ValveOpenTime_R' in df_behavior_trial.keys():
+                                            water_valve_time_right = df_behavior_trial['var:ValveOpenTime_R'].values[0]
+                                        else:
+                                            water_valve_time_right = -1
+                                        watervalvedata ={
+                                                'subject_id': subject_id_now,
+                                                'session': session_now['session'][0],
+                                                'trial': trialnum,
+                                                'water_valve_lateral_pos': water_valve_lateral_pos,
+                                                'water_valve_rostrocaudal_pos': water_valve_rostrocaudal_pos,
+                                                'water_valve_dorsoventral_pos': water_valve_dorsoventral_pos,
+                                                'water_valve_time_left': water_valve_time_left,
+                                                'water_valve_time_right': water_valve_time_right,
+                                                }
+                                        experiment.WaterValveData().insert1(watervalvedata, allow_direct_insert=True)
                                         #% add Go Cue
                                         GoCueTimes = (time_GoCue.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
                                         trialeventdatas = list()
