@@ -52,6 +52,11 @@ def populatemetadata():
     print('adding rigs')
     rigdata = [
             {
+            'rig' : 'Training-Tower-1',
+            'room' : '2w.339',
+            'rig_description' : 'training rig'
+            },
+            {
             'rig' : 'Training-Tower-2',
             'room' : '2w.339',
             'rig_description' : 'training rig'
