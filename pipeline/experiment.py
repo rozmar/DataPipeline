@@ -126,7 +126,7 @@ class SessionBlock(dj.Imported):
     block : smallint 		# block number
     ---
     block_uid : int  # unique across sessions/animals
-    block_start_time : decimal(8, 4)  # (s) relative to session beginning
+    block_start_time : decimal(10, 4)  # (s) relative to session beginning
     p_reward_left : decimal(8, 4)  # reward probability on the left waterport
     p_reward_right : decimal(8, 4)  # reward probability on the right waterport
     """
@@ -145,7 +145,7 @@ class SessionTrial(dj.Imported):
 @schema 
 class TrialNoteType(dj.Lookup):
     definition = """
-    trial_note_type : varchar(12)
+    trial_note_type : varchar(20)
     """
     contents = zip(('autolearn', 'protocol #', 'bad', 'bitcode','autowater','random_seed_start'))
 
