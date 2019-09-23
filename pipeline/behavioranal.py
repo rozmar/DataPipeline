@@ -343,38 +343,126 @@ class SubjectFittedChoiceCoefficients(dj.Computed):
         label = list()
         data = list()
         df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key))
-        sessions = np.unique(df_behaviortrial_all['session'])
-        for session in sessions:
-            if session >= first_session:
-                df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-                idx = np.argsort(df_behaviortrial['trial'])
-                choices = df_behaviortrial['trial_choice'].values[idx]
-                choices_digitized = np.zeros(len(choices))
-                choices_digitized[choices=='right']=1
-                choices_digitized[choices=='left']=-1
-                outcomes = df_behaviortrial['outcome'].values[idx]
-                rewards_digitized = choices_digitized.copy()
-                rewards_digitized[outcomes=='miss']=0
-                for trial in range(trials_back,len(rewards_digitized)):
-                    if choices_digitized[trial] != 0:
-                        label.append(choices_digitized[trial])
-                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
-        label = np.array(label)
-        data = np.matrix(data)
-        if len(data) > 1:
-            x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-            logisticRegr = LogisticRegression(solver = 'lbfgs')
-            logisticRegr.fit(x_train, y_train)
-            #predictions = logisticRegr.predict(x_test)
-            score = logisticRegr.score(x_test, y_test)        
-            coefficients = logisticRegr.coef_
-            coefficients = coefficients[0]
-            coeff_rewards = coefficients[trials_back-1::-1]
-            coeff_choices = coefficients[-1:trials_back-1:-1]
-            key['coefficients_rewards_subject'] = coeff_rewards
-            key['coefficients_choices_subject'] = coeff_choices
-            key['score_subject'] = score
-            self.insert1(key,skip_duplicates=True)    
+        if len(df_behaviortrial_all)>0:
+            sessions = np.unique(df_behaviortrial_all['session'])
+            for session in sessions:
+                if session >= first_session:
+                    df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                    idx = np.argsort(df_behaviortrial['trial'])
+                    choices = df_behaviortrial['trial_choice'].values[idx]
+                    choices_digitized = np.zeros(len(choices))
+                    choices_digitized[choices=='right']=1
+                    choices_digitized[choices=='left']=-1
+                    outcomes = df_behaviortrial['outcome'].values[idx]
+                    rewards_digitized = choices_digitized.copy()
+                    rewards_digitized[outcomes=='miss']=0
+                    for trial in range(trials_back,len(rewards_digitized)):
+                        if choices_digitized[trial] != 0:
+                            label.append(choices_digitized[trial])
+                            data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+            label = np.array(label)
+            data = np.matrix(data)
+            if len(data) > 1:
+                x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                logisticRegr = LogisticRegression(solver = 'lbfgs')
+                logisticRegr.fit(x_train, y_train)
+                #predictions = logisticRegr.predict(x_test)
+                score = logisticRegr.score(x_test, y_test)        
+                coefficients = logisticRegr.coef_
+                coefficients = coefficients[0]
+                coeff_rewards = coefficients[trials_back-1::-1]
+                coeff_choices = coefficients[-1:trials_back-1:-1]
+                key['coefficients_rewards_subject'] = coeff_rewards
+                key['coefficients_choices_subject'] = coeff_choices
+                key['score_subject'] = score
+                self.insert1(key,skip_duplicates=True)    
+    
+# =============================================================================
+# @schema
+# class SessionPsychometricCurveDataBoxCar(dj.Computed):
+#     
+#     
+#     
+#     def make(self,key):
+#         local_filter = np.ones(10)
+#         wr_name = 'FOR08'
+#         session = 4
+#         subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+#         key = {
+#                'subject_id':subject_id,
+#                'session': session,
+#                }
+#         df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
+#         #%
+#         reward_ratio_binnum = 10
+#         filter_now = local_filter[::-1]
+#         
+#         
+#         
+#         
+#         right_choice = (df_choices['trial_choice'] == 'right').values
+#         left_choice = (df_choices['trial_choice'] == 'left').values
+#         right_reward = ((df_choices['trial_choice'] == 'right')&(df_choices['outcome'] == 'hit')).values
+#         left_reward = ((df_choices['trial_choice'] == 'left')&(df_choices['outcome'] == 'hit')).values
+#         
+#         right_choice_conv = np.convolve(right_choice , filter_now,mode = 'valid')
+#         left_choice_conv = np.convolve(left_choice , filter_now,mode = 'valid')
+#         right_reward_conv = np.convolve(right_reward , filter_now,mode = 'valid')
+#         left_reward_conv = np.convolve(left_reward , filter_now,mode = 'valid')
+#         
+#         right_choice = right_choice[len(filter_now)-1:]
+#         left_choice = left_choice[len(filter_now)-1:]
+#         
+#         choice_num = np.ones(len(left_choice))
+#         choice_num[:]=np.nan
+#         choice_num[left_choice] = 0
+#         choice_num[right_choice] = 1
+#         
+#         reward_ratio_right = right_reward_conv/right_choice_conv
+#         reward_ratio_right[np.isnan(reward_ratio_right)] = 0
+#         reward_ratio_left = left_reward_conv/left_choice_conv
+#         reward_ratio_left[np.isnan(reward_ratio_left)] = 0
+#         reward_ratio_combined = reward_ratio_right/(reward_ratio_right+reward_ratio_left)
+#         
+#         
+#         todel = np.isnan(reward_ratio_combined)
+#         reward_ratio_combined = reward_ratio_combined[~todel]
+#         choice_num = choice_num[~todel]
+#         todel = np.isnan(choice_num)
+#         reward_ratio_combined = reward_ratio_combined[~todel]
+#         choice_num = choice_num[~todel]
+#         
+#         bottoms = np.arange(0,100, 100/reward_ratio_binnum)
+#         tops = np.arange(100/reward_ratio_binnum,100.005, 100/reward_ratio_binnum)
+#         
+#         reward_ratio_mean = list()
+#         reward_ratio_sd = list()
+#         choice_ratio_mean = list()
+#         choice_ratio_sd = list()
+#         for bottom,top in zip(bottoms,tops):
+#             minval = np.percentile(reward_ratio_combined,bottom)
+#             maxval = np.percentile(reward_ratio_combined,top)
+#             if minval == maxval:
+#                 idx = (reward_ratio_combined== minval)
+#             else:
+#                 idx = (reward_ratio_combined>= minval) & (reward_ratio_combined < maxval)
+#             reward_ratio_mean.append(np.mean(reward_ratio_combined[idx]))
+#             reward_ratio_sd.append(np.std(reward_ratio_combined[idx]))
+#             choice_ratio_mean.append(np.mean(choice_num[idx]))
+#             choice_ratio_sd.append(np.std(choice_num[idx]))
+#     
+# 
+# 
+# @schema    
+# class SubjectPsychometricCurveBoxCar(dj.Computed):
+#     definition = """
+#     -> lab.Subject
+#     ---
+#      : longblob
+#     coefficients_choices_subject  : longblob
+#     score_subject :  decimal(8,4)
+#     """     
+# =============================================================================
     
     
     
