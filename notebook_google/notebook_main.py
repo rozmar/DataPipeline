@@ -35,20 +35,24 @@ def fetch_water_restriction_metadata(ID):
     worksheets = wb.worksheets()
     for sheet in worksheets:
         sheetnames.append(sheet.title)
-    idx_now = sheetnames.index(ID)
-    if idx_now > -1:
-        params = {'majorDimension':'ROWS'}
-        temp = wb.values_get(ID+'!A1:O100',params)
-        temp = temp['values']
-        header = temp.pop(0)
-        data = list()
-        for row in temp:
-            if len(row) < len(header):
-                row.append('')
-            if len(row) == len(header):
-                data.append(row)
-        df = pd.DataFrame(data, columns = header)
-        return df
+        #%%
+    if ID in sheetnames:
+        idx_now = sheetnames.index(ID)
+        if idx_now > -1:
+            params = {'majorDimension':'ROWS'}
+            temp = wb.values_get(ID+'!A1:O100',params)
+            temp = temp['values']
+            header = temp.pop(0)
+            data = list()
+            for row in temp:
+                if len(row) < len(header):
+                    row.append('')
+                if len(row) == len(header):
+                    data.append(row)
+            df = pd.DataFrame(data, columns = header)
+            return df
+        else:
+            return None
     else:
         return None
 
