@@ -22,7 +22,8 @@ def populatemetadata():
         IDs = df_surgery['ID'].tolist()
         for ID in IDs:
             df_wr = online_notebook.fetch_water_restriction_metadata(ID)
-            df_wr.to_csv(dj.config['locations.metadata']+ID+'.csv') 
+            if type(df_wr) == pd.DataFrame:
+                df_wr.to_csv(dj.config['locations.metadata']+ID+'.csv') 
         with open(dj.config['locations.metadata']+'last_modify_time.json', "w") as write_file:
             json.dump(lastmodify, write_file)
         print('surgery and WR metadata updated')
@@ -114,7 +115,10 @@ def populatemetadata():
         
         if item[1]['ID']:
             #df_wr = online_notebook.fetch_water_restriction_metadata(item[1]['ID'])
-            df_wr = pd.read_csv(dj.config['locations.metadata']+item[1]['ID']+'.csv')
+            try:
+                df_wr = pd.read_csv(dj.config['locations.metadata']+item[1]['ID']+'.csv')
+            except:
+                df_wr = None
             if type(df_wr) == pd.DataFrame:
                 wrdata = {
                         'subject_id':item[1]['animal#'],
