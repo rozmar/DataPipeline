@@ -7,7 +7,8 @@ import datajoint as dj
 
 
 def get_schema_name(name):
-    return 'rozmar_foraging-'+name
+    return 'group_shared_foraging-'+name
+    #return 'rozmar_foraging-'+name
 # =============================================================================
 #     try:
 #         return dj.config['custom']['{}_{}.database'.format('rozmar',name)]
