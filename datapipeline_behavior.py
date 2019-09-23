@@ -48,6 +48,7 @@ def populatebehavior(paralel = True,drop_last_session_for_mice_in_training = Tru
     if paralel:
         ray.init()
         result_ids = []
+        #%%
         IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
         df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
         for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects      and removing last session      
@@ -59,11 +60,12 @@ def populatebehavior(paralel = True,drop_last_session_for_mice_in_training = Tru
                     dj.config['safemode'] = False
                     session_todel.delete()
                     dj.config['safemode'] = True   
+                    #%%
         for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects                       
             dict_now = dict()
             dict_now[subject_now] = subject_id_now
             result_ids.append(populatebehavior_core.remote(dict_now))    
-        ray.get(result_ids)
+        resultnottouse = ray.get(result_ids)
         ray.shutdown()
     else:
         populatebehavior_core(drop_last_session_for_mice_in_training = drop_last_session_for_mice_in_training)
@@ -83,7 +85,7 @@ def populatebehavior_core(IDs = None):
                                               '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging_again',
                                               '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging_homecage',
                                               '/home/rozmar/Data/Behavior/Behavior_room/Tower-3/Foraging_homecage',
-                                              '/home/rozmar/Data/Behavior/Behavior_room/Tower-2/Foraging',]
+                                              '/home/rozmar/Data/Behavior/Behavior_room/Tower-1/Foraging',]
         }
     projects = list()
     for projectdir in directories['behavior_project_dirs']:
@@ -387,8 +389,7 @@ def populatebehavior_core(IDs = None):
                                                         'trial_note': 'right'
                                                         }
                                             else:
-                                                print('autowater error, please check!!!')
-                                                timer.sleep(1000)
+                                                trialnotedata = None # autowater was on but there was no water due to the probabilities
     
                                         if trialnotedata:
                                             experiment.TrialNote().insert1(trialnotedata, allow_direct_insert=True)
