@@ -16,28 +16,78 @@ from pipeline import behavioranal, ephysanal
 import ray
 #%%
 @ray.remote
-def populatemytables_core(arguments):
-    behavioranal.TrialReactionTime().populate(**arguments)
-    behavioranal.SessionReactionTimeHistogram().populate(**arguments)
-    behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
-    behavioranal.SessionTrainingType().populate(**arguments)  
-    behavioranal.SessionRewardRatio().populate(**arguments)  
-    behavioranal.BlockRewardRatio().populate(**arguments)  
-    behavioranal.BlockChoiceRatio().populate(**arguments)  
-    behavioranal.BlockAutoWaterCount().populate(**arguments)  
-    behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
-    behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
-    behavioranal.SubjectFittedChoiceCoefficients.populate(**arguments)
+def populatemytables_core_paralel(arguments,runround):
+    if runround == 1:
+        behavioranal.TrialReactionTime().populate(**arguments)
+        behavioranal.SessionReactionTimeHistogram().populate(**arguments)
+        behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
+        behavioranal.SessionTrainingType().populate(**arguments)  
+#        behavioranal.SessionRewardRatio().populate(**arguments)  
+        behavioranal.BlockRewardRatio().populate(**arguments)  
+        behavioranal.BlockChoiceRatio().populate(**arguments)  
+        behavioranal.BlockAutoWaterCount().populate(**arguments)  
+        behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
+        behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards.populate(**arguments)    
+    if runround == 2:
+        behavioranal.SessionPsychometricCurveDataBoxCar.populate(**arguments)
+        behavioranal.SessionPsychometricCurveDataFitted.populate(**arguments)
+    if runround == 3:
+        behavioranal.SubjectPsychometricCurveBoxCar.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveFitted.populate(**arguments)
 
-
+def populatemytables_core(arguments,runround):
+    if runround == 1:
+        behavioranal.TrialReactionTime().populate(**arguments)
+        behavioranal.SessionReactionTimeHistogram().populate(**arguments)
+        behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
+        behavioranal.SessionTrainingType().populate(**arguments)  
+#        behavioranal.SessionRewardRatio().populate(**arguments)  
+        behavioranal.BlockRewardRatio().populate(**arguments)  
+        behavioranal.BlockChoiceRatio().populate(**arguments)  
+        behavioranal.BlockAutoWaterCount().populate(**arguments)  
+        behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
+        behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards.populate(**arguments)    
+    if runround == 2:
+        behavioranal.SessionPsychometricCurveDataBoxCar.populate(**arguments)
+        behavioranal.SessionPsychometricCurveDataFitted.populate(**arguments)
+    if runround == 3:
+        behavioranal.SubjectPsychometricCurveBoxCar.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveFitted.populate(**arguments)
+        
 def populatemytables(paralel = True, cores = 6):
+    IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
+    #df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
+    for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects      and removing subject related analysis   
+       # if df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # only if the animal is still in training..
+        if len((experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"').fetch('session')) > 0:
+            
+            schemas_todel = [behavioranal.SubjectFittedChoiceCoefficients() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPsychometricCurveBoxCar() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SessionPsychometricCurveDataFitted() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPsychometricCurveFitted() & 'subject_id = "' + str(subject_id_now)+'"',
+                             ]
+            dj.config['safemode'] = False
+            for schema_todel in schemas_todel:
+                schema_todel.delete()
+            dj.config['safemode'] = True       
     if paralel:
-        arguments = {'display_progress' : False, 'reserve_jobs' : True,'order' : 'random'}
+        
         ray.init()
-        result_ids = []
-        for coreidx in range(cores):
-            result_ids.append(populatemytables_core.remote(arguments))        
-        ray.get(result_ids)
+        for runround in [1,2,3]:
+            arguments = {'display_progress' : False, 'reserve_jobs' : True,'order' : 'random'}
+            print('round '+str(runround)+' of populate')
+            result_ids = []
+            for coreidx in range(cores):
+                result_ids.append(populatemytables_core_paralel.remote(arguments,runround))        
+            ray.get(result_ids)
+            arguments = {'display_progress' : True, 'reserve_jobs' : False}
+            populatemytables_core(arguments,runround)
+            
         ray.shutdown()
     else:
         arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
