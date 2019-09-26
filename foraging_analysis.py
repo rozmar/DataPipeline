@@ -6,11 +6,33 @@ from pipeline import pipeline_tools, lab, experiment, behavioranal
 dj.conn()
 import matplotlib.pyplot as plt
 import decimal
-
-#%% foraging tuning curves based on local reward rate!!! IMPLEMENT ME!!!
+#%%
+df_psych_boxcar = pd.DataFrame(lab.WaterRestriction()*behavioranal.SubjectPsychometricCurveBoxCar())
+df_psych_fitted = pd.DataFrame(lab.WaterRestriction()*behavioranal.SubjectPsychometricCurveFitted())
+fig=plt.figure()
+axes = list()
+for i,wrname in enumerate(np.sort(df_psych_boxcar['water_restriction_number'].values)):
+    idx = np.where(df_psych_boxcar['water_restriction_number'] == wrname)[0][0]
+    axes.append(fig.add_axes([0,-i,1,.8]))
+    axes[-1].plot([0,1],[0,1],'k-') 
+    axes[-1].errorbar(df_psych_boxcar['reward_ratio_mean'][idx],df_psych_boxcar['choice_ratio_mean'][idx],df_psych_boxcar['choice_ratio_sd'][idx],df_psych_boxcar['reward_ratio_sd'][idx],'ko-') 
+    if i == 0:
+        axes[-1].set_title(wrname+' local reward rate with boxcar')
+    else:
+        axes[-1].set_title(wrname)
+for i,wrname in enumerate(np.sort(df_psych_fitted['water_restriction_number'].values)):
+    idx = np.where(df_psych_fitted['water_restriction_number'] == wrname)[0][0]
+    axes.append(fig.add_axes([1,-i,1,.8]))
+    axes[-1].plot([0,1],[0,1],'k-') 
+    axes[-1].errorbar(df_psych_fitted['reward_ratio_mean'][idx],df_psych_fitted['choice_ratio_mean'][idx],df_psych_fitted['choice_ratio_sd'][idx],df_psych_fitted['reward_ratio_sd'][idx],'ko-') 
+    if i == 0:
+        axes[-1].set_title(wrname+' fitted reward rate')
+    else:
+        axes[-1].set_title(wrname)
+#%% foraging tuning curves based on local reward rate!
 local_filter = np.ones(10)
-wr_name = 'FOR08'
-session = 4
+wr_name = 'FOR02'
+session = 23
 subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
 key = {
        'subject_id':subject_id,
@@ -80,9 +102,9 @@ plt.errorbar(reward_ratio_mean,choice_ratio_mean,choice_ratio_sd,reward_ratio_sd
 
 
 #%% foraging tuning curves based on block
-wr_name = 'FOR01'
+wr_name = 'FOR02'
 minsession = 8
-mintrialnum = 50
+mintrialnum = 30
 metricnames = ['block_choice_ratio','block_choice_ratio_first_tertile','block_choice_ratio_second_tertile','block_choice_ratio_third_tertile']
 subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
 key = {
@@ -90,28 +112,28 @@ key = {
        #'session': session
        }
 
-pd_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()) & key)
+df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()) & key )
 #%
-pd_choice_reward_rate['block_relative_value']=pd_choice_reward_rate['p_reward_right']/(pd_choice_reward_rate['p_reward_right']+pd_choice_reward_rate['p_reward_left'])
-pd_choice_reward_rate['total_reward_rage']=(pd_choice_reward_rate['p_reward_right']+pd_choice_reward_rate['p_reward_left'])
-needed = (pd_choice_reward_rate['total_reward_rage']< .5) & (pd_choice_reward_rate['session']>= minsession) & (pd_choice_reward_rate['block_choice_ratio']>-1) & (pd_choice_reward_rate['block_autowater_count']==0) & (pd_choice_reward_rate['block_length'] >= mintrialnum)
-pd_choice_reward_rate = pd_choice_reward_rate[needed] # unwanted blocks are deleted
+df_choice_reward_rate['block_relative_value']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+df_choice_reward_rate['total_reward_rage']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+needed = (df_choice_reward_rate['total_reward_rage']< .5) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum)
+df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
 #%
 fig=plt.figure()
 
 ax_blocklenght=fig.add_axes([0,1,1,.8])
-out = ax_blocklenght.hist(pd_choice_reward_rate['block_length'],30)
+out = ax_blocklenght.hist(df_choice_reward_rate['block_length'],30)
 ax_blocklenght.set_xlabel('Block length (trials)')
 ax_blocklenght.set_ylabel('Count')
 ax_blocklenght.set_title(wr_name)
 for idx,metricname in enumerate(metricnames):
-    relvals = np.sort(pd_choice_reward_rate['block_relative_value'].unique())
+    relvals = np.sort(df_choice_reward_rate['block_relative_value'].unique())
     choice_ratio_mean = list()
     choice_ratio_sd = list()
     choice_ratio_median = list()
     reward_rate_value = list()
     for relval in relvals:
-        choice_rate_vals = pd_choice_reward_rate[metricname][pd_choice_reward_rate['block_relative_value']==relval]
+        choice_rate_vals = df_choice_reward_rate[metricname][df_choice_reward_rate['block_relative_value']==relval]
         choice_ratio_mean.append(choice_rate_vals.mean())
         choice_ratio_median.append(choice_rate_vals.median())
         choice_ratio_sd.append(float(np.std(choice_rate_vals.to_numpy())))
@@ -120,7 +142,7 @@ for idx,metricname in enumerate(metricnames):
     
     ax_1=fig.add_axes([0,-idx,1,.8])
     ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
-    ax_1.plot(pd_choice_reward_rate['block_relative_value'],pd_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+    ax_1.plot(df_choice_reward_rate['block_relative_value'],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
     ax_1.plot([0,1],[0,1],'k-')
     ax_1.set_ylim([0, 1])
     ax_1.set_xlim([0, 1])
@@ -128,7 +150,132 @@ for idx,metricname in enumerate(metricnames):
     ax_1.set_ylabel('relative choice (c_R/(c_R+c_L))')
     ax_1.set_title(metricname)
     ax_2=fig.add_axes([1.2,-idx,1,.8])
-    ax_2.plot(pd_choice_reward_rate['block_length'],pd_choice_reward_rate[metricname]-pd_choice_reward_rate['block_relative_value'],'ko',markersize = 3)
+    ax_2.plot(df_choice_reward_rate['block_length'],df_choice_reward_rate[metricname]-df_choice_reward_rate['block_relative_value'],'ko',markersize = 3)
+    
+#%% foraging tuning curves based on block with actual reward rates
+wr_name = 'FOR01'
+minsession = 8
+mintrialnum = 30
+metricnames = ['block_choice_ratio','block_choice_ratio_first_tertile','block_choice_ratio_second_tertile','block_choice_ratio_third_tertile']
+metricnames_xaxes = ['block_reward_ratio_differential','block_reward_ratio_first_tertile_differential','block_reward_ratio_second_tertile_differential','block_reward_ratio_third_tertile_differential']
+subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+key = {
+       'subject_id':subject_id,
+       #'session': session
+       }
+
+df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()) &key)
+#%
+df_choice_reward_rate['block_relative_value']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+df_choice_reward_rate['total_reward_rage']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+needed = (df_choice_reward_rate['total_reward_rage']< .5) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum)
+df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
+#%
+fig=plt.figure()
+
+ax_blocklenght=fig.add_axes([0,1,1,.8])
+out = ax_blocklenght.hist(df_choice_reward_rate['block_length'],30)
+ax_blocklenght.set_xlabel('Block length (trials)')
+ax_blocklenght.set_ylabel('Count')
+ax_blocklenght.set_title(wr_name)
+for idx,(metricname,metricname_x) in enumerate(zip(metricnames,metricnames_xaxes)):
+# =============================================================================
+#     relvals = np.sort(df_choice_reward_rate['block_relative_value'].unique())
+#     choice_ratio_mean = list()
+#     choice_ratio_sd = list()
+#     choice_ratio_median = list()
+#     reward_rate_value = list()
+#     for relval in relvals:
+#         choice_rate_vals = df_choice_reward_rate[metricname][df_choice_reward_rate['block_relative_value']==relval]
+#         choice_ratio_mean.append(choice_rate_vals.mean())
+#         choice_ratio_median.append(choice_rate_vals.median())
+#         choice_ratio_sd.append(float(np.std(choice_rate_vals.to_numpy())))
+#         reward_rate_value.append(float(relval))
+# =============================================================================
+    #%
+    
+    ax_1=fig.add_axes([0,-idx,1,.8])
+    #ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+    ax_1.plot(df_choice_reward_rate[metricname_x],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+    ax_1.plot([0,1],[0,1],'k-')
+    ax_1.set_ylim([0, 1])
+    ax_1.set_xlim([0, 1])
+    ax_1.set_xlabel('actual relative value (r_R/(r_R+r_L))')
+    ax_1.set_ylabel('relative choice (c_R/(c_R+c_L))')
+    ax_1.set_title(metricname)
+    ax_2=fig.add_axes([1.2,-idx,1,.8])
+    ax_2.plot(df_choice_reward_rate['block_length'],df_choice_reward_rate[metricname]-df_choice_reward_rate['block_relative_value'],'ko',markersize = 3)
+
+
+
+
+#%% BOTH
+    
+
+wr_name = 'FOR02'
+minsession = 8
+mintrialnum = 30
+metricnames = ['block_choice_ratio','block_choice_ratio_first_tertile','block_choice_ratio_second_tertile','block_choice_ratio_third_tertile']
+subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+key = {
+       'subject_id':subject_id,
+       #'session': session
+       }
+
+
+df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()) & key )
+#%
+df_choice_reward_rate['block_relative_value']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+df_choice_reward_rate['total_reward_rage']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+needed = (df_choice_reward_rate['total_reward_rage']< .5) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum)
+df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
+#%
+fig=plt.figure()
+
+ax_blocklenght=fig.add_axes([0,1,1,.8])
+out = ax_blocklenght.hist(df_choice_reward_rate['block_length'],30)
+ax_blocklenght.set_xlabel('Block length (trials)')
+ax_blocklenght.set_ylabel('Count')
+ax_blocklenght.set_title(wr_name)
+for idx,metricname in enumerate(metricnames):
+    relvals = np.sort(df_choice_reward_rate['block_relative_value'].unique())
+    choice_ratio_mean = list()
+    choice_ratio_sd = list()
+    choice_ratio_median = list()
+    reward_rate_value = list()
+    for relval in relvals:
+        choice_rate_vals = df_choice_reward_rate[metricname][df_choice_reward_rate['block_relative_value']==relval]
+        choice_ratio_mean.append(choice_rate_vals.mean())
+        choice_ratio_median.append(choice_rate_vals.median())
+        choice_ratio_sd.append(float(np.std(choice_rate_vals.to_numpy())))
+        reward_rate_value.append(float(relval))
+    #%
+    
+    ax_2=fig.add_axes([1.2,-idx,1,.8])
+    ax_2.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+    ax_2.plot(df_choice_reward_rate['block_relative_value'],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+    ax_2.plot([0,1],[0,1],'k-')
+    ax_2.set_ylim([0, 1])
+    ax_2.set_xlim([0, 1])
+    ax_2.set_xlabel('relative value (p_R/(p_R+p_L))')
+    ax_2.set_ylabel('relative choice (c_R/(c_R+c_L))')
+    ax_2.set_title(metricname)
+    
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
 #%% show weight and water consumption of subjects over time
 df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
 subject_names = df_subject_wr['water_restriction_number'].unique()
