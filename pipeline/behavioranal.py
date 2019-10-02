@@ -13,6 +13,64 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 schema = dj.schema(get_schema_name('behavior-anal'),locals())
 
+
+def calculate_local_income(df_behaviortrial,filter_now):
+    right_choice = (df_behaviortrial['trial_choice'] == 'right').values
+    left_choice = (df_behaviortrial['trial_choice'] == 'left').values
+    right_reward = ((df_behaviortrial['trial_choice'] == 'right')&(df_behaviortrial['outcome'] == 'hit')).values
+    left_reward = ((df_behaviortrial['trial_choice'] == 'left')&(df_behaviortrial['outcome'] == 'hit')).values
+    
+    right_reward_conv = np.convolve(right_reward , filter_now,mode = 'valid')
+    left_reward_conv = np.convolve(left_reward , filter_now,mode = 'valid')
+    
+    right_choice = right_choice[len(filter_now)-1:]
+    left_choice = left_choice[len(filter_now)-1:]
+    
+    choice_num = np.ones(len(left_choice))
+    choice_num[:]=np.nan
+    choice_num[left_choice] = 0
+    choice_num[right_choice] = 1
+    
+    todel = np.isnan(choice_num)
+    right_reward_conv = right_reward_conv[~todel]
+    left_reward_conv = left_reward_conv[~todel]
+    choice_num = choice_num[~todel]
+    
+   
+    local_differential_income = right_reward_conv - left_reward_conv
+    choice_local_differential_income = choice_num
+    
+    local_fractional_income = right_reward_conv/(right_reward_conv+left_reward_conv)
+    choice_local_fractional_income = choice_num
+    
+    todel = np.isnan(local_fractional_income)
+    local_fractional_income = local_fractional_income[~todel]
+    choice_local_fractional_income = choice_local_fractional_income[~todel]
+    return local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  
+
+def bin_psychometric_curve(local_income,choice_num,local_income_binnum):
+    bottoms = np.arange(0,100, 100/local_income_binnum)
+    tops = np.arange(100/local_income_binnum,100.005, 100/local_income_binnum)
+    reward_ratio_mean = list()
+    reward_ratio_sd = list()
+    choice_ratio_mean = list()
+    choice_ratio_sd = list()
+    n = list()
+    for bottom,top in zip(bottoms,tops):
+        minval = np.percentile(local_income,bottom)
+        maxval = np.percentile(local_income,top)
+        if minval == maxval:
+            idx = (local_income== minval)
+        else:
+            idx = (local_income>= minval) & (local_income < maxval)
+        reward_ratio_mean.append(np.mean(local_income[idx]))
+        reward_ratio_sd.append(np.std(local_income[idx]))
+        choice_ratio_mean.append(np.mean(choice_num[idx]))
+        choice_ratio_sd.append(np.std(choice_num[idx]))
+        n.append(np.sum(idx))
+    return reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n
+
+
 @schema
 class TrialReactionTime(dj.Computed):
     definition = """
@@ -32,6 +90,43 @@ class TrialReactionTime(dj.Computed):
             key['reaction_time'] = float(min(lick_times))  
             key['first_lick_time'] = float(min(lick_times))  + float(gocue_time.values)
         self.insert1(key,skip_duplicates=True)
+        
+@schema
+class TrialLickBoutLenght(dj.Computed):
+    definition = """
+    -> experiment.BehaviorTrial
+    ---
+    lick_bout_length : decimal(8,4) # lick bout lenght in seconds
+    """
+    def make(self, key):
+        maxlickinterval = .2
+        df_lickrhythm = pd.DataFrame(((experiment.BehaviorTrial()*experiment.ActionEvent()) & key)*TrialReactionTime())
+        
+        if len(df_lickrhythm )>0 and df_lickrhythm['outcome'][0]== 'hit':
+            df_lickrhythm['licktime'] = np.nan
+            df_lickrhythm['licktime'] = df_lickrhythm['action_event_time']-df_lickrhythm['first_lick_time']
+            df_lickrhythm['lickdirection'] = np.nan
+            df_lickrhythm.loc[df_lickrhythm['action_event_type'] == 'left lick','lickdirection'] = 'left'
+            df_lickrhythm.loc[df_lickrhythm['action_event_type'] == 'right lick','lickdirection'] = 'right'
+            df_lickrhythm['firs_licktime_on_the_other_side'] = np.nan
+            df_lickrhythm['lickboutlength'] = np.nan
+
+            firs_lick_on_the_other_side = float(np.min(df_lickrhythm.loc[(df_lickrhythm['lickdirection'] != df_lickrhythm['trial_choice']) & (df_lickrhythm['licktime'] > 0) ,'licktime']))
+            if np.isnan(firs_lick_on_the_other_side):
+                firs_lick_on_the_other_side = np.inf
+            df_lickrhythm['firs_licktime_on_the_other_side'] = firs_lick_on_the_other_side
+            lickbouttimes = df_lickrhythm.loc[(df_lickrhythm['lickdirection'] == df_lickrhythm['trial_choice']) & (df_lickrhythm['licktime'] < firs_lick_on_the_other_side) & (df_lickrhythm['licktime'] >= 0),'licktime']
+            
+            if len(lickbouttimes)>1 and any(lickbouttimes.diff().values>maxlickinterval):
+                lickbouttimes  = lickbouttimes[:np.where(lickbouttimes.diff().values>maxlickinterval)[0][0]]
+            lickboutlenghtnow = float(np.max(lickbouttimes))
+            if np.isnan(lickboutlenghtnow):
+                lickboutlenghtnow = 0
+            #df_lickrhythm['lickboutlength'] = lickboutlenghtnow 
+            #%%
+            key['lick_bout_length'] = lickboutlenghtnow
+            self.insert1(key,skip_duplicates=True)
+            
 @schema
 class SessionReactionTimeHistogram(dj.Computed):
     definition = """
@@ -82,7 +177,75 @@ class SessionLickRhythmHistogram(dj.Computed):
             key['lick_rhythm_values_miss_trials'] = vals_miss
             key['lick_rhythm_values_hit_trials'] = vals_hit
             self.insert1(key,skip_duplicates=True)
-        
+
+@schema
+class SessionRuns(dj.Computed):
+    definition = """
+    # a run is a sequence of trials when the mouse chooses the same option
+    -> experiment.Session
+    run_num : int # number of choice block
+    ---
+    run_start : int # first trial #the switch itself
+    run_end : int # last trial #one trial before the next choice
+    run_choice : varchar(8) # left or right
+    run_length : int # number of trials in this run
+    run_hits : int # number of hit trials
+    run_misses : int # number of miss trials
+    run_consecutive_misses: int # number of consecutive misses before switch
+    run_ignores : int # number of ignore trials
+    """
+    def make(self, key):     
+        #%%
+        #key = {'subject_id':447921,'session':1}
+        df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
+        #%%
+        if len(df_choices)>0:
+            df_choices['run_choice'] = df_choices['trial_choice']
+            ignores = np.where(df_choices['run_choice']=='none')[0]
+            if len(ignores)>0:
+                ignoreblock = np.diff(np.concatenate([[0],ignores]))>1
+                ignores = ignores[ignoreblock.argmax():]
+                ignoreblock = ignoreblock[ignoreblock.argmax():]
+                while any(ignoreblock):
+                    df_choices.loc[ignores[ignoreblock],'run_choice'] = df_choices.loc[ignores[ignoreblock]-1,'run_choice'].values
+                    ignores = np.where(df_choices['run_choice']=='none')[0]
+                    ignoreblock = np.diff(np.concatenate([[0],ignores]))>1
+                    try:
+                        ignores = ignores[ignoreblock.argmax():]
+                        ignoreblock = ignoreblock[ignoreblock.argmax():]
+                    except:
+                        ignoreblock = []
+
+            df_choices['run_choice_num'] = np.nan
+            df_choices.loc[df_choices['run_choice'] == 'left','run_choice_num'] = 0
+            df_choices.loc[df_choices['run_choice'] == 'right','run_choice_num'] = 1
+            diffchoice = np.abs(np.diff(df_choices['run_choice_num']))
+            diffchoice[np.isnan(diffchoice)] = 0
+            switches = np.where(diffchoice>0)[0]
+            if any(np.where(df_choices['run_choice']=='none')[0]):
+                runstart = np.concatenate([[np.max(np.where(df_choices['run_choice']=='none')[0])+1],switches+1])
+            else:
+                runstart = np.concatenate([[0],switches+1])
+            runend = np.concatenate([switches,[len(df_choices)-1]])
+            columns = list(key.keys())
+            columns.extend(['run_num','run_start','run_end','run_choice','run_length','run_hits','run_misses','run_consecutive_misses','run_ignores'])
+            df_key = pd.DataFrame(data = np.zeros((len(runstart),len(columns))),columns = columns)
+    
+            ## this is where I generate and insert the dataframe
+            for keynow in key.keys(): 
+                df_key[keynow] = key[keynow]
+            for run_num,(run_start,run_end) in enumerate(zip(runstart,runend)):
+                df_key.loc[run_num,'run_num'] = run_num
+                df_key.loc[run_num,'run_start'] = run_start
+                df_key.loc[run_num,'run_end'] = run_end
+                df_key.loc[run_num,'run_choice'] = df_choices['run_choice'][run_start]
+                df_key.loc[run_num,'run_length'] = run_end-run_start+1
+                df_key.loc[run_num,'run_hits'] = sum(df_choices['outcome'][run_start:run_end+1]=='hit')
+                df_key.loc[run_num,'run_misses'] = sum(df_choices['outcome'][run_start:run_end+1]=='miss')
+                df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]=='miss').idxmax():run_end+1]=='miss')
+                df_key.loc[run_num,'run_ignores'] = sum(df_choices['outcome'][run_start:run_end+1]=='ignore')
+            self.insert(df_key.to_records(index=False))
+        #%%
 @schema
 class SessionTrainingType(dj.Computed):
     definition = """
@@ -474,214 +637,46 @@ class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):
                 print('not enough data for ' + wrnumber)
         else:
             print('no WR number for this guy')
-    #%%
 @schema
-class SessionPsychometricCurveDataBoxCar(dj.Computed):
+class SessionPsychometricDataBoxCar(dj.Computed):
     definition = """
     -> experiment.Session
     ---
-    reward_ratio : longblob
-    choice :  longblob
+    local_fractional_income : longblob
+    choice_local_fractional_income : longblob
+    local_differential_income : longblob
+    choice_differential_fractional_income : longblob
     """  
-    
-    
-    
     def make(self,key):
-        #%%
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-        
+        warnings.filterwarnings("ignore", category=RuntimeWarning)        
         local_filter = np.ones(10)
-        
-# =============================================================================
-#         wr_name = 'FOR08'
-#         session = 4
-#         subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
-#         key = {
-#                'subject_id':subject_id,
-#                'session': session,
-#                }
-# =============================================================================
-        df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
-        filter_now = local_filter#[::-1]       
-        right_choice = (df_choices['trial_choice'] == 'right').values
-        left_choice = (df_choices['trial_choice'] == 'left').values
-        right_reward = ((df_choices['trial_choice'] == 'right')&(df_choices['outcome'] == 'hit')).values
-        left_reward = ((df_choices['trial_choice'] == 'left')&(df_choices['outcome'] == 'hit')).values
-        
-        right_choice_conv = np.convolve(right_choice , filter_now,mode = 'valid')
-        left_choice_conv = np.convolve(left_choice , filter_now,mode = 'valid')
-        right_reward_conv = np.convolve(right_reward , filter_now,mode = 'valid')
-        left_reward_conv = np.convolve(left_reward , filter_now,mode = 'valid')
-        
-        right_choice = right_choice[len(filter_now)-1:]
-        left_choice = left_choice[len(filter_now)-1:]
-        
-        choice_num = np.ones(len(left_choice))
-        choice_num[:]=np.nan
-        choice_num[left_choice] = 0
-        choice_num[right_choice] = 1
-        
-# =============================================================================
-#         reward_ratio_right = right_reward_conv/right_choice_conv
-#         reward_ratio_right[np.isnan(reward_ratio_right)] = 0
-#         reward_ratio_left = left_reward_conv/left_choice_conv
-#         reward_ratio_left[np.isnan(reward_ratio_left)] = 0
-#         reward_ratio_combined = reward_ratio_right/(reward_ratio_right+reward_ratio_left)
-# =============================================================================
-        
-        reward_ratio_combined = right_reward_conv/(right_reward_conv+left_reward_conv)
-        
-        todel = np.isnan(reward_ratio_combined)
-        reward_ratio_combined = reward_ratio_combined[~todel]
-        choice_num = choice_num[~todel]
-        todel = np.isnan(choice_num)
-        reward_ratio_combined = reward_ratio_combined[~todel]
-        choice_num = choice_num[~todel]
-        
-        key['reward_ratio'] = reward_ratio_combined
-        key['choice'] = choice_num
-        self.insert1(key,skip_duplicates=True)
-        #%%
-        
-    
-
-
-@schema    
-class SubjectPsychometricCurveBoxCar(dj.Computed):
-    definition = """
-    -> lab.Subject
-    ---
-    reward_ratio_mean  : longblob
-    reward_ratio_sd  : longblob
-    choice_ratio_mean  : longblob
-    choice_ratio_sd  : longblob
-    trial_num : longblob
-    """     
-    def make(self,key):  
-        #%%
-        minsession = 8
-# =============================================================================
-#         wr_name = 'HC16'
-#         
-#         subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
-#         key = {
-#                'subject_id':subject_id,
-#                }
-# =============================================================================
-        df_psychcurve = pd.DataFrame(SessionPsychometricCurveDataBoxCar()&key & 'session > '+str(minsession-1))
-        if len(df_psychcurve )>0:
-            reward_ratio_combined = np.concatenate(df_psychcurve['reward_ratio'].values)
-            choice_num = np.concatenate(df_psychcurve['choice'].values)
-# =============================================================================
-#             tokeep = ((reward_ratio_combined <1) & (reward_ratio_combined > 0))
-#             reward_ratio_combined = reward_ratio_combined[tokeep]
-#             choice_num = choice_num[tokeep]
-# =============================================================================
-            #%
-            reward_ratio_binnum = 10
-            bottoms = np.arange(0,100, 100/reward_ratio_binnum)
-            tops = np.arange(100/reward_ratio_binnum,100.005, 100/reward_ratio_binnum)
-            
-            reward_ratio_mean = list()
-            reward_ratio_sd = list()
-            choice_ratio_mean = list()
-            choice_ratio_sd = list()
-            n = list()
-            for bottom,top in zip(bottoms,tops):
-                minval = np.percentile(reward_ratio_combined,bottom)
-                maxval = np.percentile(reward_ratio_combined,top)
-                if minval == maxval:
-                    idx = (reward_ratio_combined== minval)
-                else:
-                    idx = (reward_ratio_combined>= minval) & (reward_ratio_combined < maxval)
-                reward_ratio_mean.append(np.mean(reward_ratio_combined[idx]))
-                reward_ratio_sd.append(np.std(reward_ratio_combined[idx]))
-                choice_ratio_mean.append(np.mean(choice_num[idx]))
-                choice_ratio_sd.append(np.std(choice_num[idx]))
-                n.append(np.sum(idx))
-            key['reward_ratio_mean'] = reward_ratio_mean
-            key['reward_ratio_sd'] = reward_ratio_sd
-            key['choice_ratio_mean'] = choice_ratio_mean
-            key['choice_ratio_sd'] = choice_ratio_sd
-            key['trial_num'] = n
+        local_filter = local_filter/sum(local_filter)
+        df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
+        if len(df_behaviortrial)>1:
+            local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  = calculate_local_income(df_behaviortrial,local_filter)
             self.insert1(key,skip_duplicates=True)
-        
-
 
 @schema
-class SessionPsychometricCurveDataFitted(dj.Computed):
+class SessionPsychometricDataFitted(dj.Computed):
     definition = """
     -> experiment.Session
     ---
-    reward_ratio : longblob
-    choice :  longblob
+    local_fractional_income : longblob
+    choice_local_fractional_income : longblob
+    local_differential_income : longblob
+    choice_differential_fractional_income : longblob
     """  
-    
-    
-    
     def make(self,key):
-        #%%
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         df_coeff = pd.DataFrame(SubjectFittedChoiceCoefficientsOnlyRewards())
         local_filter = df_coeff['coefficients_rewards_subject'].mean()
-
-        #%%
-# =============================================================================
-#         wr_name = 'FOR01'
-#         session = 4
-#         subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
-#         key = {
-#                'subject_id':subject_id,
-#            #    'session': session,
-#                }
-# =============================================================================
-        #%%
-        df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
-        filter_now = local_filter#[::-1]       
-        right_choice = (df_choices['trial_choice'] == 'right').values
-        left_choice = (df_choices['trial_choice'] == 'left').values
-        right_reward = ((df_choices['trial_choice'] == 'right')&(df_choices['outcome'] == 'hit')).values
-        left_reward = ((df_choices['trial_choice'] == 'left')&(df_choices['outcome'] == 'hit')).values
-        
-        right_choice_conv = np.convolve(right_choice , filter_now,mode = 'valid')
-        left_choice_conv = np.convolve(left_choice , filter_now,mode = 'valid')
-        right_reward_conv = np.convolve(right_reward , filter_now,mode = 'valid')
-        left_reward_conv = np.convolve(left_reward , filter_now,mode = 'valid')
-        
-        right_choice = right_choice[len(filter_now)-1:]
-        left_choice = left_choice[len(filter_now)-1:]
-        
-        choice_num = np.ones(len(left_choice))
-        choice_num[:]=np.nan
-        choice_num[left_choice] = 0
-        choice_num[right_choice] = 1
-        
-# =============================================================================
-#         reward_ratio_right = right_reward_conv/right_choice_conv
-#         reward_ratio_right[np.isnan(reward_ratio_right)] = 0
-#         reward_ratio_left = left_reward_conv/left_choice_conv
-#         reward_ratio_left[np.isnan(reward_ratio_left)] = 0
-#         reward_ratio_combined = reward_ratio_right/(reward_ratio_right+reward_ratio_left)
-# =============================================================================
-        reward_ratio_combined = right_reward_conv/(right_reward_conv+left_reward_conv)
-        
-        todel = np.isnan(reward_ratio_combined)
-        reward_ratio_combined = reward_ratio_combined[~todel]
-        choice_num = choice_num[~todel]
-        todel = np.isnan(choice_num)
-        reward_ratio_combined = reward_ratio_combined[~todel]
-        choice_num = choice_num[~todel]
-        
-        key['reward_ratio'] = reward_ratio_combined
-        key['choice'] = choice_num
-        self.insert1(key,skip_duplicates=True)
-        #%%
-        
-    
-
+        df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
+        if len(df_behaviortrial)>1:
+            local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  = calculate_local_income(df_behaviortrial,local_filter)
+            self.insert1(key,skip_duplicates=True)
 
 @schema    
-class SubjectPsychometricCurveFitted(dj.Computed):
+class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
     definition = """
     -> lab.Subject
     ---
@@ -692,49 +687,74 @@ class SubjectPsychometricCurveFitted(dj.Computed):
     trial_num : longblob
     """     
     def make(self,key):  
-        #%%
         minsession = 8
-# =============================================================================
-#         wr_name = 'HC16'
-#         
-#         subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
-#         key = {
-#                'subject_id':subject_id,
-#                }
-# =============================================================================
-        df_psychcurve = pd.DataFrame(SessionPsychometricCurveDataFitted()&key & 'session > '+str(minsession-1))
+        reward_ratio_binnum = 10
+        df_psychcurve = pd.DataFrame(SessionPsychometricDataBoxCar()&key & 'session > '+str(minsession-1))
         if len(df_psychcurve )>0:
-            #%
-            reward_ratio_combined = np.concatenate(df_psychcurve['reward_ratio'].values)
-            choice_num = np.concatenate(df_psychcurve['choice'].values)
-# =============================================================================
-#             tokeep = ((reward_ratio_combined <1) & (reward_ratio_combined > 0))
-#             reward_ratio_combined = reward_ratio_combined[tokeep]
-#             choice_num = choice_num[tokeep]
-# =============================================================================
-            #%
-            reward_ratio_binnum = 10
-            bottoms = np.arange(0,100, 100/reward_ratio_binnum)
-            tops = np.arange(100/reward_ratio_binnum,100.005, 100/reward_ratio_binnum)
             
-            reward_ratio_mean = list()
-            reward_ratio_sd = list()
-            n = list()
-            choice_ratio_mean = list()
-            choice_ratio_sd = list()
-            for bottom,top in zip(bottoms,tops):
-                minval = np.percentile(reward_ratio_combined,bottom)
-                maxval = np.percentile(reward_ratio_combined,top)
-                if minval == maxval:
-                    idx = (reward_ratio_combined== minval)
-                else:
-                    idx = (reward_ratio_combined>= minval) & (reward_ratio_combined < maxval)
-                reward_ratio_mean.append(np.mean(reward_ratio_combined[idx]))
-                reward_ratio_sd.append(np.std(reward_ratio_combined[idx]))
-                choice_ratio_mean.append(np.mean(choice_num[idx]))
-                choice_ratio_sd.append(np.std(choice_num[idx]))
-                n.append(np.sum(idx))
-                #%%
+            reward_ratio_combined = np.concatenate(df_psychcurve['local_fractional_income'].values)
+            choice_num = np.concatenate(df_psychcurve['choice_local_fractional_income'].values)
+            
+            reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
+            
+            key['reward_ratio_mean'] = reward_ratio_mean
+            key['reward_ratio_sd'] = reward_ratio_sd
+            key['choice_ratio_mean'] = choice_ratio_mean
+            key['choice_ratio_sd'] = choice_ratio_sd
+            key['trial_num'] = n
+            self.insert1(key,skip_duplicates=True)
+
+@schema    
+class SubjectPsychometricCurveBoxCarDifferential(dj.Computed):
+    definition = """
+    -> lab.Subject
+    ---
+    reward_ratio_mean  : longblob
+    reward_ratio_sd  : longblob
+    choice_ratio_mean  : longblob
+    choice_ratio_sd  : longblob
+    trial_num : longblob
+    """     
+    def make(self,key):  
+        minsession = 8
+        reward_ratio_binnum = 10
+        df_psychcurve = pd.DataFrame(SessionPsychometricDataBoxCar()&key & 'session > '+str(minsession-1))
+        if len(df_psychcurve )>0:
+            
+            reward_ratio_combined = np.concatenate(df_psychcurve['local_differential_income'].values)
+            choice_num = np.concatenate(df_psychcurve['choice_local_differential_income'].values)
+            
+            reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
+            
+            key['reward_ratio_mean'] = reward_ratio_mean
+            key['reward_ratio_sd'] = reward_ratio_sd
+            key['choice_ratio_mean'] = choice_ratio_mean
+            key['choice_ratio_sd'] = choice_ratio_sd
+            key['trial_num'] = n
+            self.insert1(key,skip_duplicates=True)
+
+@schema    
+class SubjectPsychometricCurveFittedFractional(dj.Computed):
+    definition = """
+    -> lab.Subject
+    ---
+    reward_ratio_mean  : longblob
+    reward_ratio_sd  : longblob
+    choice_ratio_mean  : longblob
+    choice_ratio_sd  : longblob
+    trial_num : longblob
+    """     
+    def make(self,key):  
+        minsession = 8
+        reward_ratio_binnum = 10
+        df_psychcurve = pd.DataFrame(SessionPsychometricDataFitted()&key & 'session > '+str(minsession-1))
+        if len(df_psychcurve )>0:
+            
+            reward_ratio_combined = np.concatenate(df_psychcurve['local_fractional_income'].values)
+            choice_num = np.concatenate(df_psychcurve['choice_local_fractional_income'].values)
+            
+            reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
+            
             key['reward_ratio_mean'] = reward_ratio_mean
             key['reward_ratio_sd'] = reward_ratio_sd
             key['choice_ratio_mean'] = choice_ratio_mean
@@ -743,7 +763,31 @@ class SubjectPsychometricCurveFitted(dj.Computed):
             self.insert1(key,skip_duplicates=True)
     
     
-    
-    
-    
-        
+@schema    
+class SubjectPsychometricCurveFittedDifferential(dj.Computed):
+    definition = """
+    -> lab.Subject
+    ---
+    reward_ratio_mean  : longblob
+    reward_ratio_sd  : longblob
+    choice_ratio_mean  : longblob
+    choice_ratio_sd  : longblob
+    trial_num : longblob
+    """     
+    def make(self,key):  
+        minsession = 8
+        reward_ratio_binnum = 10
+        df_psychcurve = pd.DataFrame(SessionPsychometricDataFitted()&key & 'session > '+str(minsession-1))
+        if len(df_psychcurve )>0:
+            
+            reward_ratio_combined = np.concatenate(df_psychcurve['local_differential_income'].values)
+            choice_num = np.concatenate(df_psychcurve['choice_local_differential_income'].values)
+            
+            reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
+            
+            key['reward_ratio_mean'] = reward_ratio_mean
+            key['reward_ratio_sd'] = reward_ratio_sd
+            key['choice_ratio_mean'] = choice_ratio_mean
+            key['choice_ratio_sd'] = choice_ratio_sd
+            key['trial_num'] = n
+            self.insert1(key,skip_duplicates=True)    
