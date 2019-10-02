@@ -124,8 +124,10 @@ class TrialLickBoutLenght(dj.Computed):
                 lickboutlenghtnow = 0
             #df_lickrhythm['lickboutlength'] = lickboutlenghtnow 
             #%%
-            key['lick_bout_length'] = lickboutlenghtnow
-            self.insert1(key,skip_duplicates=True)
+        else:
+            lickboutlenghtnow = 0
+        key['lick_bout_length'] = lickboutlenghtnow
+        self.insert1(key,skip_duplicates=True)
             
 @schema
 class SessionReactionTimeHistogram(dj.Computed):
