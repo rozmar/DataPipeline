@@ -19,7 +19,9 @@ import ray
 def populatemytables_core_paralel(arguments,runround):
     if runround == 1:
         behavioranal.TrialReactionTime().populate(**arguments)
+        behavioranal.TrialLickBoutLenght().populate(**arguments)
         behavioranal.SessionReactionTimeHistogram().populate(**arguments)
+        behavioranal.SessionRuns().populate(**arguments)
         behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
         behavioranal.SessionTrainingType().populate(**arguments)  
 #        behavioranal.SessionRewardRatio().populate(**arguments)  
@@ -31,16 +33,20 @@ def populatemytables_core_paralel(arguments,runround):
         behavioranal.SubjectFittedChoiceCoefficients.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards.populate(**arguments)    
     if runround == 2:
-        behavioranal.SessionPsychometricCurveDataBoxCar.populate(**arguments)
-        behavioranal.SessionPsychometricCurveDataFitted.populate(**arguments)
+        behavioranal.SessionPsychometricDataBoxCar.populate(**arguments)
+        behavioranal.SessionPsychometricDataFitted.populate(**arguments)
     if runround == 3:
-        behavioranal.SubjectPsychometricCurveBoxCar.populate(**arguments)
-        behavioranal.SubjectPsychometricCurveFitted.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveBoxCarFractional.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveBoxCarDifferential.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveFittedFractional.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveFittedDifferential.populate(**arguments)
 
 def populatemytables_core(arguments,runround):
     if runround == 1:
         behavioranal.TrialReactionTime().populate(**arguments)
+        #behavioranal.TrialLickBoutLenght().populate(**arguments)
         behavioranal.SessionReactionTimeHistogram().populate(**arguments)
+        behavioranal.SessionRuns().populate(**arguments)
         behavioranal.SessionLickRhythmHistogram().populate(**arguments)  
         behavioranal.SessionTrainingType().populate(**arguments)  
 #        behavioranal.SessionRewardRatio().populate(**arguments)  
@@ -52,11 +58,13 @@ def populatemytables_core(arguments,runround):
         behavioranal.SubjectFittedChoiceCoefficients.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards.populate(**arguments)    
     if runround == 2:
-        behavioranal.SessionPsychometricCurveDataBoxCar.populate(**arguments)
-        behavioranal.SessionPsychometricCurveDataFitted.populate(**arguments)
+        behavioranal.SessionPsychometricDataBoxCar.populate(**arguments)
+        behavioranal.SessionPsychometricDataFitted.populate(**arguments)
     if runround == 3:
-        behavioranal.SubjectPsychometricCurveBoxCar.populate(**arguments)
-        behavioranal.SubjectPsychometricCurveFitted.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveBoxCarFractional.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveBoxCarDifferential.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveFittedFractional.populate(**arguments)
+        behavioranal.SubjectPsychometricCurveFittedDifferential.populate(**arguments)
         
 def populatemytables(paralel = True, cores = 6):
     IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
@@ -67,9 +75,11 @@ def populatemytables(paralel = True, cores = 6):
             
             schemas_todel = [behavioranal.SubjectFittedChoiceCoefficients() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPsychometricCurveBoxCar() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SessionPsychometricCurveDataFitted() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPsychometricCurveFitted() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SessionPsychometricDataFitted() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPsychometricCurveBoxCarFractional() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPsychometricCurveBoxCarDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPsychometricCurveFittedFractional() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPsychometricCurveFittedDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
                              ]
             dj.config['safemode'] = False
             for schema_todel in schemas_todel:
