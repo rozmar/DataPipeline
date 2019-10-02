@@ -98,3 +98,19 @@ class SweepStimulus(dj.Imported): #TO DO: fill in metadata
     stimulus_trace  : longblob #
     stimulus_units: varchar(5)
     """
+    
+@schema
+class SweepTemperature(dj.Imported): #TO DO: fill in metadata
+    definition = """
+    -> Sweep
+    ---
+    temperature_trace  : longblob #
+    temperature_units: varchar(5)
+    """
+@schema
+class SweepImagingExposure(dj.Imported): #TO DO: fill in metadata
+    definition = """
+    -> Sweep
+    ---
+    imaging_exposure_trace  : longblob #
+    """
