@@ -8,7 +8,22 @@ import matplotlib.pyplot as plt
 import decimal
 import warnings
 #%%
-
+def merge_dataframes_with_nans(df_1,df_2,basiscol):
+    basiscol = 'trial'
+    colstoadd = list()
+# =============================================================================
+#     df_1 = df_behaviortrial
+#     df_2 = df_reactiontimes
+# =============================================================================
+    for colnow in df_2.keys():
+        if colnow not in df_1.keys():
+            df_1[colnow] = np.nan
+            colstoadd.append(colnow)
+    for line in df_2.iterrows():
+        for colname in colstoadd:
+            df_1.loc[df_1[basiscol]==line[1][basiscol],colname]=line[1][colname]
+    return df_1
+#%%            
 def plot_weight_water_early_lick(subjects = None):
     if type(subjects) == str:
         subjects = [subjects]
@@ -371,7 +386,7 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4,local_filter = n
     ax4.set_ylabel('Relative value')
     ax4.set_title('Filter for local reward rate')
  #%%   
-def plot_one_session(wr_name = 'FOR02',session = 23, choice_filter = np.ones(5), local_filter = np.ones(10)):
+def plot_one_session(wr_name = 'FOR02',session = 23, choice_filter = np.ones(5), local_filter = np.ones(10), RT_filter = np.ones(10)):
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     #%%
 # =============================================================================
@@ -379,24 +394,43 @@ def plot_one_session(wr_name = 'FOR02',session = 23, choice_filter = np.ones(5),
 #     session = 10
 #     choice_filter = np.ones(5)
 #     local_filter = np.ones(10)
+#     RT_filter = np.ones(10)
+#     
 # =============================================================================
+    
+    
     choice_filter = np.asarray(choice_filter)/sum(choice_filter)
+    local_filter = np.asarray(local_filter)/sum(local_filter)
+    RT_filter = np.asarray(RT_filter)/sum(RT_filter)
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     if session == 'last':
         session = np.max((experiment.Session() & 'subject_id = '+str(subject_id)).fetch('session'))
         df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()* behavioranal.TrialReactionTime).fetch())
+        df_reactiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
         while len(df_behaviortrial)<5:
             session -= 1
             df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock() * behavioranal.TrialReactionTime).fetch())
+            df_reactiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
     else:
         df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()* behavioranal.TrialReactionTime).fetch())
+        df_reactiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
+    
+    df_behaviortrial = merge_dataframes_with_nans(df_behaviortrial,df_reactiontimes,'trial')
+
+    
     df_session=pd.DataFrame(experiment.Session() & 'session = '+str(session) & 'subject_id = '+str(subject_id))
     df_session
-    df_behaviortrial['trial_choice_plot'] = .5#np.nan
+    df_behaviortrial['trial_choice_plot'] = np.nan
     #df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='left']=0
     df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'left', 'trial_choice_plot'] = 0
     #df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
     df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'right', 'trial_choice_plot'] = 1
+    trial_choice_plot_interpolated = df_behaviortrial['trial_choice_plot'].values
+    nans, x= np.isnan(trial_choice_plot_interpolated), lambda z: z.nonzero()[0]
+    trial_choice_plot_interpolated[nans]= np.interp(x(nans), x(~nans), trial_choice_plot_interpolated[~nans])
+    bias = np.convolve(trial_choice_plot_interpolated,choice_filter,mode = 'valid')
+    bias = np.concatenate((np.nan*np.ones(int(np.floor((len(choice_filter)-1)/2))),bias,np.nan*np.ones(int(np.ceil((len(choice_filter)-1)/2)))))
+    
     df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
 
 # =============================================================================
@@ -410,14 +444,14 @@ def plot_one_session(wr_name = 'FOR02',session = 23, choice_filter = np.ones(5),
 # =============================================================================
          
             
-    bias = np.convolve(df_behaviortrial['trial_choice_plot'],choice_filter,mode = 'valid')
-    bias = np.concatenate((np.nan*np.ones(int(np.floor((len(choice_filter)-1)/2))),bias,np.nan*np.ones(int(np.ceil((len(choice_filter)-1)/2)))))
+    
     
     rewarded = (df_behaviortrial['outcome']=='hit')
     unrewarded = (df_behaviortrial['outcome']=='miss')
-
+    all_reward = ((df_behaviortrial['outcome'] == 'hit')).values
     right_reward = ((df_behaviortrial['trial_choice'] == 'right')&(df_behaviortrial['outcome'] == 'hit')).values
     left_reward = ((df_behaviortrial['trial_choice'] == 'left')&(df_behaviortrial['outcome'] == 'hit')).values
+    all_reward_conv = np.concatenate((np.nan*np.ones(len(local_filter)-1),np.convolve(all_reward , local_filter,mode = 'valid')))
     right_reward_conv = np.concatenate((np.nan*np.ones(len(local_filter)-1),np.convolve(right_reward , local_filter,mode = 'valid')))
     left_reward_conv = np.concatenate((np.nan*np.ones(len(local_filter)-1),np.convolve(left_reward , local_filter,mode = 'valid')))
     rewardratio_combined = right_reward_conv/(right_reward_conv+left_reward_conv)
@@ -475,11 +509,66 @@ def plot_one_session(wr_name = 'FOR02',session = 23, choice_filter = np.ones(5),
     ax2.set_xlabel('Trial #')
     ax2.legend(['left','right'])
     
+    
+    
+    leftidx_all = (df_behaviortrial['trial_choice'] == 'left')# & (df_behaviortrial['early_lick'] == 'no early')
+    rightidx_all = (df_behaviortrial['trial_choice'] == 'right')# & (df_behaviortrial['early_lick'] == 'no early')
+    
+    leftrts_interpolated = np.ones(len(df_behaviortrial))*np.nan
+    leftrts_interpolated[leftidx_all]=df_behaviortrial['reaction_time'][leftidx_all]
+    nans, x= np.isnan(leftrts_interpolated), lambda z: z.nonzero()[0]
+    leftrts_interpolated[nans]= np.interp(x(nans), x(~nans), leftrts_interpolated[~nans])
+    left_RT_conv = np.convolve(leftrts_interpolated,RT_filter,mode = 'valid')
+    left_RT_conv = np.concatenate((np.nan*np.ones(int(np.floor((len(RT_filter)-1)/2))),left_RT_conv,np.nan*np.ones(int(np.ceil((len(RT_filter)-1)/2)))))
+    
+    rightrts_interpolated = np.ones(len(df_behaviortrial))*np.nan
+    rightrts_interpolated [rightidx_all]=df_behaviortrial['reaction_time'][rightidx_all]
+    nans, x= np.isnan(rightrts_interpolated), lambda z: z.nonzero()[0]
+    rightrts_interpolated[nans]= np.interp(x(nans), x(~nans), rightrts_interpolated[~nans])
+    right_RT_conv = np.convolve(rightrts_interpolated,RT_filter,mode = 'valid')
+    right_RT_conv  = np.concatenate((np.nan*np.ones(int(np.floor((len(RT_filter)-1)/2))),right_RT_conv ,np.nan*np.ones(int(np.ceil((len(RT_filter)-1)/2)))))
+    
+# =============================================================================
+#     leftidx = df_reactiontimes['trial_choice'] == 'left'
+#     rightidx = df_reactiontimes['trial_choice'] == 'right'
+# =============================================================================
+    
+    leftboutlengths_interpolated = np.ones(len(df_behaviortrial))*np.nan
+    leftboutlengths_interpolated[leftidx_all]=df_behaviortrial['lick_bout_length'][leftidx_all]
+    nans, x= np.isnan(leftboutlengths_interpolated ), lambda z: z.nonzero()[0]
+    leftboutlengths_interpolated [nans]= np.interp(x(nans), x(~nans), leftboutlengths_interpolated [~nans])
+    left_boutlength_conv = np.convolve(leftboutlengths_interpolated ,RT_filter,mode = 'valid')
+    left_boutlength_conv = np.concatenate((np.nan*np.ones(int(np.floor((len(RT_filter)-1)/2))),left_boutlength_conv,np.nan*np.ones(int(np.ceil((len(RT_filter)-1)/2)))))
+    
+    rightboutlengths_interpolated = np.ones(len(df_behaviortrial))*np.nan
+    rightboutlengths_interpolated[rightidx_all]=df_behaviortrial['lick_bout_length'][rightidx_all]
+    nans, x= np.isnan(rightboutlengths_interpolated  ), lambda z: z.nonzero()[0]
+    rightboutlengths_interpolated  [nans]= np.interp(x(nans), x(~nans), rightboutlengths_interpolated  [~nans])
+    right_boutlength_conv = np.convolve(rightboutlengths_interpolated  ,RT_filter,mode = 'valid')
+    right_boutlength_conv = np.concatenate((np.nan*np.ones(int(np.floor((len(RT_filter)-1)/2))),right_boutlength_conv,np.nan*np.ones(int(np.ceil((len(RT_filter)-1)/2)))))
+    
+    
     ax3=fig.add_axes([0,-2,2,.8])
-    ax3.plot(df_behaviortrial['trial'],df_behaviortrial['reaction_time'],'ko')
-    ax3.set_ylim([0, .5])
-    ax3.set_ylabel('Reaction time (s)')
+    ax33 = ax3.twinx()
+    ax33.plot(df_behaviortrial['trial'],all_reward_conv,'g-',label = 'total reward rate', alpha=0.3)
+    
+    ax3.plot(df_behaviortrial['trial'][leftidx_all],df_behaviortrial['reaction_time'][leftidx_all],'ro')
+    ax3.plot(df_behaviortrial['trial'],left_RT_conv,'r-',linewidth = 3)
+    ax3.plot(df_behaviortrial['trial'][leftidx_all],df_behaviortrial['lick_bout_length'][leftidx_all],'rx')
+    ax3.plot(df_behaviortrial['trial'],left_boutlength_conv,'r-',linewidth = 1)
+    
+    ax3.plot(df_behaviortrial['trial'][rightidx_all],df_behaviortrial['reaction_time'][rightidx_all],'bo')
+    ax3.plot(df_behaviortrial['trial'],right_RT_conv,'b-',linewidth = 3)
+    ax3.plot(df_behaviortrial['trial'][rightidx_all],df_behaviortrial['lick_bout_length'][rightidx_all],'bx')
+    ax3.plot(df_behaviortrial['trial'],right_boutlength_conv,'b-',linewidth = 1)
+    ax33.set_ylabel('Total reward rate')
+    #ax3.set_ylim([0, .5])
+    ax3.set_ylabel('Reaction time -o- (s)')
     ax3.set_xlabel('Trial #')
+    ax3.set_yscale('log')
+    minyval = df_behaviortrial.loc[df_behaviortrial['reaction_time']>=0,'reaction_time'].min()#df_behaviortrial.loc[df_behaviortrial['lick_bout_length']>=0,'lick_bout_length'].min()
+    maxyval = np.max([df_behaviortrial.loc[df_behaviortrial['reaction_time']>=0,'reaction_time'].max(),df_behaviortrial.loc[df_behaviortrial['lick_bout_length']>=0,'lick_bout_length'].max()])
+    ax3.set_ylim([float(minyval),float(maxyval)])
     ax4 = fig.add_axes([0,-3,.8,.8])
     ax4.hist(np.asarray(np.diff(df_behaviortrial['trial_start_time'].values),dtype = 'float'))
     ax4.set_xlabel('ITI (s)')
@@ -501,7 +590,7 @@ def plot_one_session(wr_name = 'FOR02',session = 23, choice_filter = np.ones(5),
     
 #ax1.set_xlim(00, 600)
 #ax2.set_xlim(00, 600)
-
+#%%
 
 def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum = 30):
     #%%
@@ -582,6 +671,6 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
         ax_3.plot(xvals,yvals,'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
         ax_3.plot([-3,3],[-3,3],'k-')
         ax_3.plot([-3,3],np.polyval(p,[-3,3]),'r-',linewidth = 3)
-        ax_3.set_xlabel('log actual relative value (r_R/(r_R+r_L))')
-        ax_3.set_ylabel('log relative choice (c_R/(c_R+c_L))')
+        ax_3.set_xlabel('log reward rate log(r_R/r_L)')
+        ax_3.set_ylabel('log choice rate log(c_R/c_L)')
         ax_3.set_title('slope: {:2.2f}'.format(p[0]))
