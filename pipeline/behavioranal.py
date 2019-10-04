@@ -647,7 +647,7 @@ class SessionPsychometricDataBoxCar(dj.Computed):
     local_fractional_income : longblob
     choice_local_fractional_income : longblob
     local_differential_income : longblob
-    choice_differential_fractional_income : longblob
+    choice_local_differential_income : longblob
     """  
     def make(self,key):
         warnings.filterwarnings("ignore", category=RuntimeWarning)        
@@ -656,6 +656,10 @@ class SessionPsychometricDataBoxCar(dj.Computed):
         df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
         if len(df_behaviortrial)>1:
             local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  = calculate_local_income(df_behaviortrial,local_filter)
+            key['local_fractional_income'] = local_fractional_income
+            key['choice_local_fractional_income'] = choice_local_fractional_income
+            key['local_differential_income'] = local_differential_income
+            key['choice_local_differential_income']= choice_local_differential_income
             self.insert1(key,skip_duplicates=True)
 
 @schema
@@ -666,15 +670,20 @@ class SessionPsychometricDataFitted(dj.Computed):
     local_fractional_income : longblob
     choice_local_fractional_income : longblob
     local_differential_income : longblob
-    choice_differential_fractional_income : longblob
+    choice_local_differential_income : longblob
     """  
     def make(self,key):
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         df_coeff = pd.DataFrame(SubjectFittedChoiceCoefficientsOnlyRewards())
         local_filter = df_coeff['coefficients_rewards_subject'].mean()
+        local_filter = local_filter/sum(local_filter)
         df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
         if len(df_behaviortrial)>1:
             local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  = calculate_local_income(df_behaviortrial,local_filter)
+            key['local_fractional_income'] = local_fractional_income
+            key['choice_local_fractional_income'] = choice_local_fractional_income
+            key['local_differential_income'] = local_differential_income
+            key['choice_local_differential_income']= choice_local_differential_income
             self.insert1(key,skip_duplicates=True)
 
 @schema    
