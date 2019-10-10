@@ -1,6 +1,8 @@
 import datajoint as dj
 import pandas as pd
 import numpy as np
+from scipy.stats import norm
+from scipy.optimize import curve_fit
 #import decimal
 import warnings
 import pipeline.lab as lab
@@ -11,10 +13,40 @@ from pipeline.pipeline_tools import get_schema_name
 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
+import bootstrapped.bootstrap as bs
+import bootstrapped.stats_functions as bs_stats
 schema = dj.schema(get_schema_name('behavior-anal'),locals())
 
+#%%
+def calculate_average_likelihood(local_income,choice,mu,sigma):
+    
+# =============================================================================
+#         local_income = np.asarray(df_choices['local_fractional_income'][0].tolist())
+#         choice = np.asarray(df_choices['choice_local_fractional_income'][0].tolist())
+#         mu = df_psycurve_fractional['sigmoid_fit_mu']
+#         sigma = df_psycurve_fractional['sigmoid_fit_sigma']
+# =============================================================================
+    sigmoid_prediction = norm.cdf(local_income, mu, sigma)
+    score = np.zeros(len(sigmoid_prediction))
+    score[choice==1]=np.log(sigmoid_prediction[choice==1])
+    score[choice==0]=np.log(1-sigmoid_prediction[choice==0])
+    SCORE = np.exp(sum(score)/len(score))
+    return SCORE
 
+def calculate_average_likelihood_series(local_income,choice,mu,sigma,local_filter=np.ones(10)):
+    #%
+    local_filter = local_filter/sum(local_filter)
+    sigmoid_prediction = norm.cdf(local_income, mu, sigma)
+    score = np.zeros(len(sigmoid_prediction))
+    score[choice==1]=np.log(sigmoid_prediction[choice==1])
+    score[choice==0]=np.log(1-sigmoid_prediction[choice==0])
+    score_series = np.exp(np.convolve(score,local_filter,mode = 'same'))
+    return score_series
+
+#%
 def calculate_local_income(df_behaviortrial,filter_now):
+    trialnum_differential = df_behaviortrial['trial']
+    trialnum_fractional = df_behaviortrial['trial']
     right_choice = (df_behaviortrial['trial_choice'] == 'right').values
     left_choice = (df_behaviortrial['trial_choice'] == 'left').values
     right_reward = ((df_behaviortrial['trial_choice'] == 'right')&(df_behaviortrial['outcome'] == 'hit')).values
@@ -25,6 +57,7 @@ def calculate_local_income(df_behaviortrial,filter_now):
     
     right_choice = right_choice[len(filter_now)-1:]
     left_choice = left_choice[len(filter_now)-1:]
+    trialnum_differential = trialnum_differential[len(filter_now)-1:]
     
     choice_num = np.ones(len(left_choice))
     choice_num[:]=np.nan
@@ -35,7 +68,7 @@ def calculate_local_income(df_behaviortrial,filter_now):
     right_reward_conv = right_reward_conv[~todel]
     left_reward_conv = left_reward_conv[~todel]
     choice_num = choice_num[~todel]
-    
+    trialnum_differential = trialnum_differential[~todel]
    
     local_differential_income = right_reward_conv - left_reward_conv
     choice_local_differential_income = choice_num
@@ -46,9 +79,11 @@ def calculate_local_income(df_behaviortrial,filter_now):
     todel = np.isnan(local_fractional_income)
     local_fractional_income = local_fractional_income[~todel]
     choice_local_fractional_income = choice_local_fractional_income[~todel]
-    return local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  
+    trialnum_fractional = trialnum_differential[~todel]
+    return local_fractional_income, choice_local_fractional_income, trialnum_fractional, local_differential_income, choice_local_differential_income, trialnum_differential
 
 def bin_psychometric_curve(local_income,choice_num,local_income_binnum):
+    #%%
     bottoms = np.arange(0,100, 100/local_income_binnum)
     tops = np.arange(100/local_income_binnum,100.005, 100/local_income_binnum)
     reward_ratio_mean = list()
@@ -65,12 +100,18 @@ def bin_psychometric_curve(local_income,choice_num,local_income_binnum):
             idx = (local_income>= minval) & (local_income < maxval)
         reward_ratio_mean.append(np.mean(local_income[idx]))
         reward_ratio_sd.append(np.std(local_income[idx]))
-        choice_ratio_mean.append(np.mean(choice_num[idx]))
-        choice_ratio_sd.append(np.std(choice_num[idx]))
+# =============================================================================
+#         choice_ratio_mean.append(np.mean(choice_num[idx]))
+#         choice_ratio_sd.append(np.std(choice_num[idx]))
+# =============================================================================
+        bootstrap = bs.bootstrap(choice_num[idx], stat_func=bs_stats.mean)
+        choice_ratio_mean.append(bootstrap.value)
+        choice_ratio_sd.append(bootstrap.error_width())
         n.append(np.sum(idx))
+        #%%
     return reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n
 
-
+#%%
 @schema
 class TrialReactionTime(dj.Computed):
     definition = """
@@ -198,7 +239,7 @@ class SessionRuns(dj.Computed):
     """
     def make(self, key):     
         #%%
-        #key = {'subject_id':447921,'session':1}
+        #key = {'subject_id':453477,'session':1}
         df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
         #%%
         if len(df_choices)>0:
@@ -237,15 +278,21 @@ class SessionRuns(dj.Computed):
             for keynow in key.keys(): 
                 df_key[keynow] = key[keynow]
             for run_num,(run_start,run_end) in enumerate(zip(runstart,runend)):
-                df_key.loc[run_num,'run_num'] = run_num
-                df_key.loc[run_num,'run_start'] = run_start
-                df_key.loc[run_num,'run_end'] = run_end
+                df_key.loc[run_num,'run_num'] = run_num + 1 
+                df_key.loc[run_num,'run_start'] = run_start +1 
+                df_key.loc[run_num,'run_end'] = run_end + 1 
                 df_key.loc[run_num,'run_choice'] = df_choices['run_choice'][run_start]
                 df_key.loc[run_num,'run_length'] = run_end-run_start+1
                 df_key.loc[run_num,'run_hits'] = sum(df_choices['outcome'][run_start:run_end+1]=='hit')
                 df_key.loc[run_num,'run_misses'] = sum(df_choices['outcome'][run_start:run_end+1]=='miss')
-                df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]=='miss').idxmax():run_end+1]=='miss')
+                #df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]=='miss').idxmax():run_end+1]=='miss')
+                if sum(df_choices['outcome'][run_start:run_end+1]=='miss') == len(df_choices['outcome'][run_start:run_end+1]=='miss'):
+                    df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][run_start:run_end+1]=='miss')
+                else:
+                    df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]!='miss')[::-1].idxmax():run_end+1]=='miss')        
+                
                 df_key.loc[run_num,'run_ignores'] = sum(df_choices['outcome'][run_start:run_end+1]=='ignore')
+                #%%
             self.insert(df_key.to_records(index=False))
         #%%
 @schema
@@ -295,6 +342,38 @@ class SessionTrainingType(dj.Computed):
 #             self.insert1(key,skip_duplicates=True)
 # =============================================================================
        
+@schema
+class SessionBias(dj.Computed):
+    definition = """
+    -> experiment.Session
+    ---
+    session_bias_choice : float
+    session_bias_lick : float
+    """
+    def make(self, key):
+        #%%
+# =============================================================================
+#         wr_name = 'FOR02'
+#         session = 8
+#         subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+#         key = {
+#                 'subject_id':subject_id,
+#                 'session':session
+#                 } 
+# =============================================================================
+        choices = (experiment.BehaviorTrial()&key).fetch('trial_choice')
+        if len(choices)>0:
+            choice_right = sum(choices=='right')
+            choice_left = sum(choices=='left')
+            licks = (experiment.ActionEvent()&key).fetch('action_event_type')
+            lick_left = sum(licks =='left lick')
+            lick_right = sum(licks =='right lick')
+            choice_bias = choice_right/(choice_right+choice_left)
+            lick_bias = lick_right/(lick_right+lick_left)
+            key['session_bias_choice'] = choice_bias
+            key['session_bias_lick'] = lick_bias
+            self.insert1(key,skip_duplicates=True)
+        #%%
 @schema
 class BlockRewardRatio(dj.Computed):
     definition = """
@@ -528,10 +607,68 @@ class SessionFittedChoiceCoefficients(dj.Computed):
                 key['coefficients_choices'] = coeff_choices
                 key['score'] = score
                 self.insert1(key,skip_duplicates=True)
-
+                
+@schema
+class SubjectFittedChoiceCoefficientsRNRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject : longblob
+    coefficients_nonrewards_subject  : longblob
+    coefficients_choices_subject  : longblob
+    score_subject :  decimal(8,4)
+    """    
+    def make(self, key):
+        trials_back = 30
+        first_session = 8
+        label = list()
+        data = list()
+        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+            wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
+            df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            if len(df_behaviortrial_all)>0:
+                sessions = np.unique(df_behaviortrial_all['session'])
+                for session in sessions:
+                    if session >= first_session:
+                        df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                        idx = np.argsort(df_behaviortrial['trial'])
+                        choices = df_behaviortrial['trial_choice'].values[idx]
+                        choices_digitized = np.zeros(len(choices))
+                        choices_digitized[choices=='right']=1
+                        choices_digitized[choices=='left']=-1
+                        outcomes = df_behaviortrial['outcome'].values[idx]
+                        rewards_digitized = choices_digitized.copy()
+                        rewards_digitized[outcomes=='miss']=0
+                        non_rewards_digitized = choices_digitized.copy()
+                        non_rewards_digitized[outcomes=='hit']=0
+                        for trial in range(trials_back,len(rewards_digitized)):
+                            if choices_digitized[trial] != 0:
+                                label.append(choices_digitized[trial])
+                                data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+                label = np.array(label)
+                data = np.matrix(data)
+                if len(data) > 1:
+                    x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                    logisticRegr = LogisticRegression(solver = 'lbfgs')
+                    logisticRegr.fit(x_train, y_train)
+                    #predictions = logisticRegr.predict(x_test)
+                    score = logisticRegr.score(x_test, y_test)        
+                    coefficients = logisticRegr.coef_
+                    coefficients = coefficients[0]
+                    coeff_rewards = coefficients[trials_back-1::-1]
+                    coeff_nonrewards = coefficients[-trials_back-1:trials_back-1:-1]
+                    coeff_choices = coefficients[-1:-trials_back-1:-1]
+                    key['coefficients_rewards_subject'] = coeff_rewards
+                    key['coefficients_choices_subject'] = coeff_choices
+                    key['coefficients_nonrewards_subject'] = coeff_nonrewards
+                    key['score_subject'] = score
+                    self.insert1(key,skip_duplicates=True)    
+                    print(wrnumber + ' coefficients fitted for reward+choice')
+                else:
+                    print('not enough data for' + wrnumber)
 
 @schema
-class SubjectFittedChoiceCoefficients(dj.Computed):    
+class SubjectFittedChoiceCoefficientsRC(dj.Computed):    
     definition = """
     -> lab.Subject
     ---
@@ -540,7 +677,7 @@ class SubjectFittedChoiceCoefficients(dj.Computed):
     score_subject :  decimal(8,4)
     """    
     def make(self, key):
-        trials_back = 15
+        trials_back = 30
         first_session = 8
         label = list()
         data = list()
@@ -583,6 +720,63 @@ class SubjectFittedChoiceCoefficients(dj.Computed):
                     print(wrnumber + ' coefficients fitted for reward+choice')
                 else:
                     print('not enough data for' + wrnumber)
+                    
+@schema
+class SubjectFittedChoiceCoefficientsRNR(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject : longblob
+    coefficients_nonrewards_subject  : longblob
+    score_subject :  decimal(8,4)
+    """    
+    def make(self, key):
+        trials_back = 30
+        first_session = 8
+        label = list()
+        data = list()
+        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+            wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
+            df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            if len(df_behaviortrial_all)>0:
+                sessions = np.unique(df_behaviortrial_all['session'])
+                for session in sessions:
+                    if session >= first_session:
+                        df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                        idx = np.argsort(df_behaviortrial['trial'])
+                        choices = df_behaviortrial['trial_choice'].values[idx]
+                        choices_digitized = np.zeros(len(choices))
+                        choices_digitized[choices=='right']=1
+                        choices_digitized[choices=='left']=-1
+                        outcomes = df_behaviortrial['outcome'].values[idx]
+                        rewards_digitized = choices_digitized.copy()
+                        rewards_digitized[outcomes=='miss']=0
+                        non_rewards_digitized = choices_digitized.copy()
+                        non_rewards_digitized[outcomes=='hit']=0
+                        for trial in range(trials_back,len(rewards_digitized)):
+                            if choices_digitized[trial] != 0:
+                                label.append(choices_digitized[trial])
+                                data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
+                label = np.array(label)
+                data = np.matrix(data)
+                if len(data) > 1:
+                    x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                    logisticRegr = LogisticRegression(solver = 'lbfgs')
+                    logisticRegr.fit(x_train, y_train)
+                    #predictions = logisticRegr.predict(x_test)
+                    score = logisticRegr.score(x_test, y_test)        
+                    coefficients = logisticRegr.coef_
+                    coefficients = coefficients[0]
+                    coeff_rewards = coefficients[trials_back-1::-1]
+                    coeff_nonrewards = coefficients[-1:trials_back-1:-1]
+                    key['coefficients_rewards_subject'] = coeff_rewards
+                    key['coefficients_nonrewards_subject'] = coeff_nonrewards
+                    key['score_subject'] = score
+                    self.insert1(key,skip_duplicates=True)    
+                    print(wrnumber + ' coefficients fitted for reward+choice')
+                else:
+                    print('not enough data for' + wrnumber)
+                    
 
 @schema
 class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):    
@@ -594,7 +788,7 @@ class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):
     """    
     def make(self, key):
         #print(key)
-        trials_back = 15
+        trials_back = 30
         first_session = 8
         label = list()
         data = list()
@@ -639,6 +833,74 @@ class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):
                 print('not enough data for ' + wrnumber)
         else:
             print('no WR number for this guy')
+            
+            
+
+@schema
+class SubjectFittedChoiceCoefficientsVSTime(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject : longblob
+    score_subject :  decimal(8,4)
+    """    
+    def make(self, key):
+        #print(key)
+        
+        timesteps_back = 120
+        first_session = 8
+        label = list()
+        data = list()
+        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+            #%%
+            wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
+            
+            #%%
+            if len((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))>0:
+                sessions = np.unique((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)).fetch('session'))
+                for session in sessions:
+                    if session >= first_session:
+                        #%%
+                        df_behaviortrial = pd.DataFrame((experiment.SessionTrial()*(experiment.TrialEvent()&'trial_event_type = "go"')*experiment.BehaviorTrial())&key&'session = '+str(session))
+                        df_behaviortrial['choicetime'] = np.asarray(df_behaviortrial['trial_start_time'] + df_behaviortrial['trial_event_time'],dtype = float)
+                        mintval = np.floor(df_behaviortrial['choicetime'].min())
+                        maxtval = np.round(df_behaviortrial['choicetime'].max())+1
+                        df_behaviortrial['choicetime'] = df_behaviortrial['choicetime'] - mintval
+                        maxtval -= mintval
+                        choices_digitized = np.zeros(int(maxtval))
+                        choices_digitized[np.asarray(np.floor(df_behaviortrial.loc[df_behaviortrial['trial_choice']=='left','choicetime'].values),dtype = int)] = -1
+                        choices_digitized[np.asarray(np.floor(df_behaviortrial.loc[df_behaviortrial['trial_choice']=='right','choicetime'].values),dtype = int)] = 1
+                        rewards_digitized = choices_digitized.copy()
+                        rewards_digitized[np.asarray(np.floor(df_behaviortrial.loc[df_behaviortrial['outcome']=='miss','choicetime'].values),dtype = int)]=0
+
+                        for trial in range(timesteps_back,len(rewards_digitized)):
+                            if choices_digitized[trial] != 0:
+                                label.append(choices_digitized[trial])
+                                data.append(rewards_digitized[trial-timesteps_back:trial])
+                label = np.array(label)
+                data = np.matrix(data)
+                if len(data) > 1:
+                    x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                    logisticRegr = LogisticRegression(solver = 'lbfgs')
+                    logisticRegr.fit(x_train, y_train)
+                    #predictions = logisticRegr.predict(x_test)
+                    score = logisticRegr.score(x_test, y_test)        
+                    coefficients = logisticRegr.coef_
+                    coefficients = coefficients[0]
+                    coeff_rewards = coefficients[::-1]
+                    key['coefficients_rewards_subject'] = coeff_rewards
+                    key['score_subject'] = score
+                    self.insert1(key,skip_duplicates=True)
+                    print(wrnumber + ' coefficients fitted versus time')
+                else:
+                    print('not enough data for' + wrnumber)
+            else:
+                print('not enough data for ' + wrnumber)
+        else:
+            print('no WR number for this guy')
+    
+
+            
 @schema
 class SessionPsychometricDataBoxCar(dj.Computed):
     definition = """
@@ -646,8 +908,10 @@ class SessionPsychometricDataBoxCar(dj.Computed):
     ---
     local_fractional_income : longblob
     choice_local_fractional_income : longblob
+    trialnum_local_fractional_income : longblob
     local_differential_income : longblob
     choice_local_differential_income : longblob
+    trialnum_local_differential_income : longblob
     """  
     def make(self,key):
         warnings.filterwarnings("ignore", category=RuntimeWarning)        
@@ -655,11 +919,13 @@ class SessionPsychometricDataBoxCar(dj.Computed):
         local_filter = local_filter/sum(local_filter)
         df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
         if len(df_behaviortrial)>1:
-            local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  = calculate_local_income(df_behaviortrial,local_filter)
+            local_fractional_income, choice_local_fractional_income, trialnum_fractional, local_differential_income, choice_local_differential_income, trialnum_differential  = calculate_local_income(df_behaviortrial,local_filter)
             key['local_fractional_income'] = local_fractional_income
             key['choice_local_fractional_income'] = choice_local_fractional_income
+            key['trialnum_local_fractional_income'] = trialnum_fractional
             key['local_differential_income'] = local_differential_income
             key['choice_local_differential_income']= choice_local_differential_income
+            key['trialnum_local_differential_income'] = trialnum_differential
             self.insert1(key,skip_duplicates=True)
 
 @schema
@@ -669,8 +935,10 @@ class SessionPsychometricDataFitted(dj.Computed):
     ---
     local_fractional_income : longblob
     choice_local_fractional_income : longblob
+    trialnum_local_fractional_income : longblob
     local_differential_income : longblob
     choice_local_differential_income : longblob
+    trialnum_local_differential_income : longblob
     """  
     def make(self,key):
         warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -679,11 +947,13 @@ class SessionPsychometricDataFitted(dj.Computed):
         local_filter = local_filter/sum(local_filter)
         df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
         if len(df_behaviortrial)>1:
-            local_fractional_income, choice_local_fractional_income, local_differential_income, choice_local_differential_income  = calculate_local_income(df_behaviortrial,local_filter)
+            local_fractional_income, choice_local_fractional_income, trialnum_fractional, local_differential_income, choice_local_differential_income, trialnum_differential  = calculate_local_income(df_behaviortrial,local_filter)
             key['local_fractional_income'] = local_fractional_income
             key['choice_local_fractional_income'] = choice_local_fractional_income
+            key['trialnum_local_fractional_income'] = trialnum_fractional
             key['local_differential_income'] = local_differential_income
             key['choice_local_differential_income']= choice_local_differential_income
+            key['trialnum_local_differential_income'] = trialnum_differential
             self.insert1(key,skip_duplicates=True)
 
 @schema    
@@ -695,6 +965,8 @@ class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
     reward_ratio_sd  : longblob
     choice_ratio_mean  : longblob
     choice_ratio_sd  : longblob
+    sigmoid_fit_mu : double
+    sigmoid_fit_sigma : double 
     trial_num : longblob
     """     
     def make(self,key):  
@@ -705,13 +977,15 @@ class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
             
             reward_ratio_combined = np.concatenate(df_psychcurve['local_fractional_income'].values)
             choice_num = np.concatenate(df_psychcurve['choice_local_fractional_income'].values)
-            
+            mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
             reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
             
             key['reward_ratio_mean'] = reward_ratio_mean
             key['reward_ratio_sd'] = reward_ratio_sd
             key['choice_ratio_mean'] = choice_ratio_mean
             key['choice_ratio_sd'] = choice_ratio_sd
+            key['sigmoid_fit_mu'] = mu
+            key['sigmoid_fit_sigma'] = sigma            
             key['trial_num'] = n
             self.insert1(key,skip_duplicates=True)
 
@@ -724,9 +998,12 @@ class SubjectPsychometricCurveBoxCarDifferential(dj.Computed):
     reward_ratio_sd  : longblob
     choice_ratio_mean  : longblob
     choice_ratio_sd  : longblob
+    sigmoid_fit_mu : double
+    sigmoid_fit_sigma : double    
     trial_num : longblob
     """     
-    def make(self,key):  
+    def make(self,key): 
+        #%%
         minsession = 8
         reward_ratio_binnum = 10
         df_psychcurve = pd.DataFrame(SessionPsychometricDataBoxCar()&key & 'session > '+str(minsession-1))
@@ -734,14 +1011,17 @@ class SubjectPsychometricCurveBoxCarDifferential(dj.Computed):
             
             reward_ratio_combined = np.concatenate(df_psychcurve['local_differential_income'].values)
             choice_num = np.concatenate(df_psychcurve['choice_local_differential_income'].values)
-            
+            mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
             reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
             
             key['reward_ratio_mean'] = reward_ratio_mean
             key['reward_ratio_sd'] = reward_ratio_sd
             key['choice_ratio_mean'] = choice_ratio_mean
             key['choice_ratio_sd'] = choice_ratio_sd
+            key['sigmoid_fit_mu'] = mu
+            key['sigmoid_fit_sigma'] = sigma            
             key['trial_num'] = n
+            #%%
             self.insert1(key,skip_duplicates=True)
 
 @schema    
@@ -753,6 +1033,8 @@ class SubjectPsychometricCurveFittedFractional(dj.Computed):
     reward_ratio_sd  : longblob
     choice_ratio_mean  : longblob
     choice_ratio_sd  : longblob
+    sigmoid_fit_mu : double
+    sigmoid_fit_sigma : double    
     trial_num : longblob
     """     
     def make(self,key):  
@@ -763,16 +1045,17 @@ class SubjectPsychometricCurveFittedFractional(dj.Computed):
             
             reward_ratio_combined = np.concatenate(df_psychcurve['local_fractional_income'].values)
             choice_num = np.concatenate(df_psychcurve['choice_local_fractional_income'].values)
-            
+            mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
             reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
             
             key['reward_ratio_mean'] = reward_ratio_mean
             key['reward_ratio_sd'] = reward_ratio_sd
             key['choice_ratio_mean'] = choice_ratio_mean
             key['choice_ratio_sd'] = choice_ratio_sd
+            key['sigmoid_fit_mu'] = mu
+            key['sigmoid_fit_sigma'] = sigma
             key['trial_num'] = n
             self.insert1(key,skip_duplicates=True)
-    
     
 @schema    
 class SubjectPsychometricCurveFittedDifferential(dj.Computed):
@@ -783,6 +1066,8 @@ class SubjectPsychometricCurveFittedDifferential(dj.Computed):
     reward_ratio_sd  : longblob
     choice_ratio_mean  : longblob
     choice_ratio_sd  : longblob
+    sigmoid_fit_mu : double
+    sigmoid_fit_sigma : double
     trial_num : longblob
     """     
     def make(self,key):  
@@ -790,15 +1075,77 @@ class SubjectPsychometricCurveFittedDifferential(dj.Computed):
         reward_ratio_binnum = 10
         df_psychcurve = pd.DataFrame(SessionPsychometricDataFitted()&key & 'session > '+str(minsession-1))
         if len(df_psychcurve )>0:
-            
+            #%%
             reward_ratio_combined = np.concatenate(df_psychcurve['local_differential_income'].values)
-            choice_num = np.concatenate(df_psychcurve['choice_local_differential_income'].values)
-            
+            choice_num = np.concatenate(df_psychcurve['choice_local_differential_income'].values)   
+
+            mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
+# =============================================================================
+#             x = np.arange(-3,3,.1)
+#             y = norm.cdf(x, mu1, sigma1)
+#             plt.plot(x,y)
+#             
+# =============================================================================
             reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
             
             key['reward_ratio_mean'] = reward_ratio_mean
             key['reward_ratio_sd'] = reward_ratio_sd
             key['choice_ratio_mean'] = choice_ratio_mean
             key['choice_ratio_sd'] = choice_ratio_sd
+            key['sigmoid_fit_mu'] = mu
+            key['sigmoid_fit_sigma'] = sigma
             key['trial_num'] = n
             self.insert1(key,skip_duplicates=True)    
+            
+@schema    
+class SessionPerformance(dj.Computed):     
+    definition = """
+    -> experiment.Session
+    ---
+    performance_boxcar_fractional  : double
+    performance_boxcar_differential  : double
+    performance_fitted_fractional  : double
+    performance_fitted_differential  : double
+    """       
+    def make(self,key):  
+# =============================================================================
+#         key = {'subject_id':453475,'session':21}
+# =============================================================================
+        df_choices = pd.DataFrame(SessionPsychometricDataBoxCar()&key)
+        if len(df_choices)>0:
+            #%%
+            df_psycurve_fractional = pd.DataFrame(SubjectPsychometricCurveBoxCarFractional()&key)
+            df_psycurve_differential = pd.DataFrame(SubjectPsychometricCurveBoxCarDifferential()&key)
+            #%%
+            local_income = np.asarray(df_choices['local_fractional_income'][0].tolist())
+            choice = np.asarray(df_choices['choice_local_fractional_income'][0].tolist())
+            mu = df_psycurve_fractional['sigmoid_fit_mu']
+            sigma = df_psycurve_fractional['sigmoid_fit_sigma']
+            key['performance_boxcar_fractional'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
+                
+            local_income = np.asarray(df_choices['local_differential_income'][0].tolist())
+            choice = np.asarray(df_choices['choice_local_differential_income'][0].tolist())
+            mu = df_psycurve_differential['sigmoid_fit_mu']
+            sigma = df_psycurve_differential['sigmoid_fit_sigma']
+            key['performance_boxcar_differential'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
+            
+            
+            
+            df_choices = pd.DataFrame(SessionPsychometricDataFitted()&key)
+            df_psycurve_fractional = pd.DataFrame(SubjectPsychometricCurveFittedFractional()&key)
+            df_psycurve_differential = pd.DataFrame(SubjectPsychometricCurveFittedDifferential()&key)
+            
+            local_income = np.asarray(df_choices['local_fractional_income'][0].tolist())
+            choice = np.asarray(df_choices['choice_local_fractional_income'][0].tolist())
+            mu = df_psycurve_fractional['sigmoid_fit_mu']
+            sigma = df_psycurve_fractional['sigmoid_fit_sigma']
+            key['performance_fitted_fractional'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
+              #%%  
+            local_income = np.asarray(df_choices['local_differential_income'][0].tolist())
+            choice = np.asarray(df_choices['choice_local_differential_income'][0].tolist())
+            mu = df_psycurve_differential['sigmoid_fit_mu']
+            sigma = df_psycurve_differential['sigmoid_fit_sigma']
+            #%%
+            key['performance_fitted_differential'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
+            self.insert1(key,skip_duplicates=True)
+    
