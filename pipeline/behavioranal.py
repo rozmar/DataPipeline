@@ -18,32 +18,40 @@ import bootstrapped.stats_functions as bs_stats
 schema = dj.schema(get_schema_name('behavior-anal'),locals())
 
 #%%
-def calculate_average_likelihood(local_income,choice,mu,sigma):
-    
+def calculate_average_likelihood(local_income,choice,parameters):
+    #%%
 # =============================================================================
 #         local_income = np.asarray(df_choices['local_fractional_income'][0].tolist())
 #         choice = np.asarray(df_choices['choice_local_fractional_income'][0].tolist())
 #         mu = df_psycurve_fractional['sigmoid_fit_mu']
 #         sigma = df_psycurve_fractional['sigmoid_fit_sigma']
 # =============================================================================
-    sigmoid_prediction = norm.cdf(local_income, mu, sigma)
-    score = np.zeros(len(sigmoid_prediction))
-    score[choice==1]=np.log(sigmoid_prediction[choice==1])
-    score[choice==0]=np.log(1-sigmoid_prediction[choice==0])
+    if parameters['fit_type'] == 'sigmoid':
+        prediction = norm.cdf(local_income, parameters['mu'], parameters['sigma'])
+    else:
+        prediction = local_income*parameters['slope']+parameters['c']
+        #prediction = np.polyval([parameters['slope'],parameters['c']],local_income)
+    score = np.zeros(len(prediction))
+    score[choice==1]=np.log(prediction[choice==1])
+    score[choice==0]=np.log(1-prediction[choice==0])
+    score = score[~np.isinf(score)&~np.isnan(score)]
     SCORE = np.exp(sum(score)/len(score))
+    #%%
     return SCORE
 
-def calculate_average_likelihood_series(local_income,choice,mu,sigma,local_filter=np.ones(10)):
-    #%
+def calculate_average_likelihood_series(local_income,choice,parameters,local_filter=np.ones(10)):
     local_filter = local_filter/sum(local_filter)
-    sigmoid_prediction = norm.cdf(local_income, mu, sigma)
-    score = np.zeros(len(sigmoid_prediction))
-    score[choice==1]=np.log(sigmoid_prediction[choice==1])
-    score[choice==0]=np.log(1-sigmoid_prediction[choice==0])
+    if parameters['fit_type'] == 'sigmoid':
+        prediction = norm.cdf(local_income, parameters['mu'], parameters['sigma'])
+    else:
+        prediction = np.asarray(local_income)*parameters['slope']+parameters['c']
+    
+    score = np.zeros(len(prediction))
+    score[choice==1]=np.log(prediction[choice==1])
+    score[choice==0]=np.log(1-prediction[choice==0])
     score_series = np.exp(np.convolve(score,local_filter,mode = 'same'))
     return score_series
 
-#%
 def calculate_local_income(df_behaviortrial,filter_now):
     trialnum_differential = df_behaviortrial['trial']
     trialnum_fractional = df_behaviortrial['trial']
@@ -83,9 +91,11 @@ def calculate_local_income(df_behaviortrial,filter_now):
     return local_fractional_income, choice_local_fractional_income, trialnum_fractional, local_differential_income, choice_local_differential_income, trialnum_differential
 
 def bin_psychometric_curve(local_income,choice_num,local_income_binnum):
-    #%%
+    #%
     bottoms = np.arange(0,100, 100/local_income_binnum)
     tops = np.arange(100/local_income_binnum,100.005, 100/local_income_binnum)
+    tops[tops > 100] = 100
+    bottoms[bottoms < 0] = 0
     reward_ratio_mean = list()
     reward_ratio_sd = list()
     choice_ratio_mean = list()
@@ -108,7 +118,7 @@ def bin_psychometric_curve(local_income,choice_num,local_income_binnum):
         choice_ratio_mean.append(bootstrap.value)
         choice_ratio_sd.append(bootstrap.error_width())
         n.append(np.sum(idx))
-        #%%
+        #%
     return reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n
 
 #%%
@@ -347,8 +357,8 @@ class SessionBias(dj.Computed):
     definition = """
     -> experiment.Session
     ---
-    session_bias_choice : float
-    session_bias_lick : float
+    session_bias_choice : float # 0 = left , 1 = right
+    session_bias_lick : float # 0 = left , 1 = right
     """
     def make(self, key):
         #%%
@@ -831,8 +841,10 @@ class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):
                     print('not enough data for' + wrnumber)
             else:
                 print('not enough data for ' + wrnumber)
-        else:
-            print('no WR number for this guy')
+# =============================================================================
+#         else:
+#             print('no WR number for this guy')
+# =============================================================================
             
             
 
@@ -896,8 +908,10 @@ class SubjectFittedChoiceCoefficientsVSTime(dj.Computed):
                     print('not enough data for' + wrnumber)
             else:
                 print('not enough data for ' + wrnumber)
-        else:
-            print('no WR number for this guy')
+# =============================================================================
+#         else:
+#             print('no WR number for this guy')
+# =============================================================================
     
 
             
@@ -912,6 +926,7 @@ class SessionPsychometricDataBoxCar(dj.Computed):
     local_differential_income : longblob
     choice_local_differential_income : longblob
     trialnum_local_differential_income : longblob
+    local_filter : longblob
     """  
     def make(self,key):
         warnings.filterwarnings("ignore", category=RuntimeWarning)        
@@ -926,6 +941,7 @@ class SessionPsychometricDataBoxCar(dj.Computed):
             key['local_differential_income'] = local_differential_income
             key['choice_local_differential_income']= choice_local_differential_income
             key['trialnum_local_differential_income'] = trialnum_differential
+            key['local_filter'] = local_filter
             self.insert1(key,skip_duplicates=True)
 
 @schema
@@ -939,6 +955,7 @@ class SessionPsychometricDataFitted(dj.Computed):
     local_differential_income : longblob
     choice_local_differential_income : longblob
     trialnum_local_differential_income : longblob
+    local_filter : longblob
     """  
     def make(self,key):
         warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -954,6 +971,7 @@ class SessionPsychometricDataFitted(dj.Computed):
             key['local_differential_income'] = local_differential_income
             key['choice_local_differential_income']= choice_local_differential_income
             key['trialnum_local_differential_income'] = trialnum_differential
+            key['local_filter'] = local_filter
             self.insert1(key,skip_duplicates=True)
 
 @schema    
@@ -967,7 +985,10 @@ class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
     choice_ratio_sd  : longblob
     sigmoid_fit_mu : double
     sigmoid_fit_sigma : double 
+    linear_fit_slope : double
+    linear_fit_c : double
     trial_num : longblob
+    local_filter : longblob
     """     
     def make(self,key):  
         minsession = 8
@@ -978,6 +999,9 @@ class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
             reward_ratio_combined = np.concatenate(df_psychcurve['local_fractional_income'].values)
             choice_num = np.concatenate(df_psychcurve['choice_local_fractional_income'].values)
             mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
+            out = curve_fit(lambda t,a,b: a*t+b,  reward_ratio_combined,  choice_num)
+            slope = out[0][0]
+            c = out[0][1]
             reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
             
             key['reward_ratio_mean'] = reward_ratio_mean
@@ -985,8 +1009,11 @@ class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
             key['choice_ratio_mean'] = choice_ratio_mean
             key['choice_ratio_sd'] = choice_ratio_sd
             key['sigmoid_fit_mu'] = mu
-            key['sigmoid_fit_sigma'] = sigma            
+            key['sigmoid_fit_sigma'] = sigma     
+            key['linear_fit_slope'] = slope
+            key['linear_fit_c'] = c
             key['trial_num'] = n
+            key['local_filter'] = df_psychcurve['local_filter']
             self.insert1(key,skip_duplicates=True)
 
 @schema    
@@ -999,8 +1026,11 @@ class SubjectPsychometricCurveBoxCarDifferential(dj.Computed):
     choice_ratio_mean  : longblob
     choice_ratio_sd  : longblob
     sigmoid_fit_mu : double
-    sigmoid_fit_sigma : double    
+    sigmoid_fit_sigma : double 
+    linear_fit_slope : double
+    linear_fit_c : double
     trial_num : longblob
+    local_filter : longblob
     """     
     def make(self,key): 
         #%%
@@ -1012,6 +1042,9 @@ class SubjectPsychometricCurveBoxCarDifferential(dj.Computed):
             reward_ratio_combined = np.concatenate(df_psychcurve['local_differential_income'].values)
             choice_num = np.concatenate(df_psychcurve['choice_local_differential_income'].values)
             mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
+            out = curve_fit(lambda t,a,b: a*t+b,  reward_ratio_combined,  choice_num)
+            slope = out[0][0]
+            c = out[0][1]
             reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
             
             key['reward_ratio_mean'] = reward_ratio_mean
@@ -1019,8 +1052,11 @@ class SubjectPsychometricCurveBoxCarDifferential(dj.Computed):
             key['choice_ratio_mean'] = choice_ratio_mean
             key['choice_ratio_sd'] = choice_ratio_sd
             key['sigmoid_fit_mu'] = mu
-            key['sigmoid_fit_sigma'] = sigma            
+            key['sigmoid_fit_sigma'] = sigma      
+            key['linear_fit_slope'] = slope
+            key['linear_fit_c'] = c
             key['trial_num'] = n
+            key['local_filter'] = df_psychcurve['local_filter']
             #%%
             self.insert1(key,skip_duplicates=True)
 
@@ -1034,8 +1070,11 @@ class SubjectPsychometricCurveFittedFractional(dj.Computed):
     choice_ratio_mean  : longblob
     choice_ratio_sd  : longblob
     sigmoid_fit_mu : double
-    sigmoid_fit_sigma : double    
+    sigmoid_fit_sigma : double 
+    linear_fit_slope : double
+    linear_fit_c : double
     trial_num : longblob
+    local_filter : longblob
     """     
     def make(self,key):  
         minsession = 8
@@ -1046,6 +1085,9 @@ class SubjectPsychometricCurveFittedFractional(dj.Computed):
             reward_ratio_combined = np.concatenate(df_psychcurve['local_fractional_income'].values)
             choice_num = np.concatenate(df_psychcurve['choice_local_fractional_income'].values)
             mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
+            out = curve_fit(lambda t,a,b: a*t+b,  reward_ratio_combined,  choice_num)
+            slope = out[0][0]
+            c = out[0][1]
             reward_ratio_mean, reward_ratio_sd, choice_ratio_mean, choice_ratio_sd, n = bin_psychometric_curve(reward_ratio_combined,choice_num,reward_ratio_binnum)
             
             key['reward_ratio_mean'] = reward_ratio_mean
@@ -1054,7 +1096,10 @@ class SubjectPsychometricCurveFittedFractional(dj.Computed):
             key['choice_ratio_sd'] = choice_ratio_sd
             key['sigmoid_fit_mu'] = mu
             key['sigmoid_fit_sigma'] = sigma
+            key['linear_fit_slope'] = slope
+            key['linear_fit_c'] = c
             key['trial_num'] = n
+            key['local_filter'] = df_psychcurve['local_filter']
             self.insert1(key,skip_duplicates=True)
     
 @schema    
@@ -1068,7 +1113,10 @@ class SubjectPsychometricCurveFittedDifferential(dj.Computed):
     choice_ratio_sd  : longblob
     sigmoid_fit_mu : double
     sigmoid_fit_sigma : double
+    linear_fit_slope : double
+    linear_fit_c : double
     trial_num : longblob
+    local_filter : longblob
     """     
     def make(self,key):  
         minsession = 8
@@ -1080,6 +1128,9 @@ class SubjectPsychometricCurveFittedDifferential(dj.Computed):
             choice_num = np.concatenate(df_psychcurve['choice_local_differential_income'].values)   
 
             mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
+            out = curve_fit(lambda t,a,b: a*t+b,  reward_ratio_combined,  choice_num)
+            slope = out[0][0]
+            c = out[0][1]
 # =============================================================================
 #             x = np.arange(-3,3,.1)
 #             y = norm.cdf(x, mu1, sigma1)
@@ -1094,7 +1145,10 @@ class SubjectPsychometricCurveFittedDifferential(dj.Computed):
             key['choice_ratio_sd'] = choice_ratio_sd
             key['sigmoid_fit_mu'] = mu
             key['sigmoid_fit_sigma'] = sigma
+            key['linear_fit_slope'] = slope
+            key['linear_fit_c'] = c
             key['trial_num'] = n
+            key['local_filter'] = df_psychcurve['local_filter']
             self.insert1(key,skip_duplicates=True)    
             
 @schema    
@@ -1108,44 +1162,58 @@ class SessionPerformance(dj.Computed):
     performance_fitted_differential  : double
     """       
     def make(self,key):  
+        #%%
 # =============================================================================
-#         key = {'subject_id':453475,'session':21}
+#         #key = {'subject_id':453475,'session':21}
 # =============================================================================
         df_choices = pd.DataFrame(SessionPsychometricDataBoxCar()&key)
+        #%%
         if len(df_choices)>0:
             #%%
             df_psycurve_fractional = pd.DataFrame(SubjectPsychometricCurveBoxCarFractional()&key)
             df_psycurve_differential = pd.DataFrame(SubjectPsychometricCurveBoxCarDifferential()&key)
-            #%%
+            #%
             local_income = np.asarray(df_choices['local_fractional_income'][0].tolist())
             choice = np.asarray(df_choices['choice_local_fractional_income'][0].tolist())
-            mu = df_psycurve_fractional['sigmoid_fit_mu']
-            sigma = df_psycurve_fractional['sigmoid_fit_sigma']
-            key['performance_boxcar_fractional'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
+            mu = df_psycurve_fractional['sigmoid_fit_mu'][0]
+            sigma = df_psycurve_fractional['sigmoid_fit_sigma'][0]
+            slope = df_psycurve_fractional['linear_fit_slope'][0]
+            c = df_psycurve_fractional['linear_fit_c'][0]
+            parameters = dict()
+            parameters = {'fit_type':'linear','slope':slope,'c':c}
+            key['performance_boxcar_fractional'] =  calculate_average_likelihood(local_income,choice,parameters)
                 
             local_income = np.asarray(df_choices['local_differential_income'][0].tolist())
             choice = np.asarray(df_choices['choice_local_differential_income'][0].tolist())
-            mu = df_psycurve_differential['sigmoid_fit_mu']
-            sigma = df_psycurve_differential['sigmoid_fit_sigma']
-            key['performance_boxcar_differential'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
+            mu = df_psycurve_differential['sigmoid_fit_mu'][0]
+            sigma = df_psycurve_differential['sigmoid_fit_sigma'][0]
+            slope = df_psycurve_differential['linear_fit_slope'][0]
+            c = df_psycurve_differential['linear_fit_c'][0]
+            parameters = {'fit_type':'sigmoid','mu':mu,'sigma':sigma}
+            key['performance_boxcar_differential'] =  calculate_average_likelihood(local_income,choice,parameters)
             
             
-            
+            #%%
             df_choices = pd.DataFrame(SessionPsychometricDataFitted()&key)
             df_psycurve_fractional = pd.DataFrame(SubjectPsychometricCurveFittedFractional()&key)
             df_psycurve_differential = pd.DataFrame(SubjectPsychometricCurveFittedDifferential()&key)
             
             local_income = np.asarray(df_choices['local_fractional_income'][0].tolist())
             choice = np.asarray(df_choices['choice_local_fractional_income'][0].tolist())
-            mu = df_psycurve_fractional['sigmoid_fit_mu']
-            sigma = df_psycurve_fractional['sigmoid_fit_sigma']
-            key['performance_fitted_fractional'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
-              #%%  
+            mu = df_psycurve_fractional['sigmoid_fit_mu'][0]
+            sigma = df_psycurve_fractional['sigmoid_fit_sigma'][0]
+            slope = df_psycurve_fractional['linear_fit_slope'][0]
+            c = df_psycurve_fractional['linear_fit_c'][0]
+            parameters = {'fit_type':'linear','slope':slope,'c':c}
+            key['performance_fitted_fractional'] =  calculate_average_likelihood(local_income,choice,parameters)
+            #%%
             local_income = np.asarray(df_choices['local_differential_income'][0].tolist())
             choice = np.asarray(df_choices['choice_local_differential_income'][0].tolist())
-            mu = df_psycurve_differential['sigmoid_fit_mu']
-            sigma = df_psycurve_differential['sigmoid_fit_sigma']
-            #%%
-            key['performance_fitted_differential'] =  calculate_average_likelihood(local_income,choice,mu,sigma)
+            mu = df_psycurve_differential['sigmoid_fit_mu'][0]
+            sigma = df_psycurve_differential['sigmoid_fit_sigma'][0]
+            slope = df_psycurve_differential['linear_fit_slope'][0]
+            c = df_psycurve_differential['linear_fit_c'][0]
+            parameters = {'fit_type':'sigmoid','mu':mu,'sigma':sigma}
+            key['performance_fitted_differential'] =  calculate_average_likelihood(local_income,choice,parameters)
             self.insert1(key,skip_duplicates=True)
     
