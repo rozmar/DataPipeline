@@ -1,12 +1,219 @@
 from datetime import datetime, timedelta, time
 import pandas as pd
 import numpy as np
+import scipy
 import datajoint as dj
 from pipeline import pipeline_tools, lab, experiment, behavioranal
 dj.conn()
 import matplotlib.pyplot as plt
 import decimal
+
+
+
+
+#%% 
+df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
+subject_names = df_subject_wr['water_restriction_number'].unique()
+subject_names.sort()
+fig=plt.figure()
+axes = list()
+slopes = list()
+constants = list()
+biases = list()
+for i,wr_name in enumerate(subject_names):
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {
+            'subject_id':subject_id
+            }
+    
+    
+    local_fractional_income = (behavioranal.SessionPsychometricDataFitted()&key).fetch('local_fractional_income')
+    choice_local_fractional_income = (behavioranal.SessionPsychometricDataFitted()&key).fetch('choice_local_fractional_income')
+    slope=list()
+    constant = list()
+    bias = list()
+    for income,choice in zip(local_fractional_income,choice_local_fractional_income):
+        out = scipy.optimize.curve_fit(lambda t,a,b: a*t+b,  income,  choice)
+        slope.append(out[0][0])
+        constant.append(out[0][1])
+        bias.append(out[0][0]*.5+out[0][1])
+    
+    slopes.append(np.asarray(slope))
+    constants.append(np.asarray(constant))
+    biases.append(np.asarray(bias))
+        
+    axes.append(fig.add_axes([0,-i,.8,.8]))
+    axes[-1].plot(slope,'k-')    
+    axes[-1].plot(np.ones(len(slope)),'k--')    
+    axes[-1].set_title(wr_name)
+    axes[-1].set_xlabel('Session')
+    axes[-1].set_ylabel('Slope')
+    axes[-1].set_ylim([.5,1.5])
+    axes.append(fig.add_axes([1,-i,.8,.8]))
+    axes[-1].plot(bias,'k-')    
+    axes[-1].plot(np.ones(len(slope))*.5,'k--')    
+#    axes[-1].set_title('Side bias')
+    axes[-1].set_xlabel('Session')
+    axes[-1].set_ylabel('Bias')
+    axes[-1].set_ylim([0,1])
+#%
+fig=plt.figure() 
+slopeaxes = fig.add_axes([0,0,.8,.8])
+for slope,constant,bias in zip(slopes,constants,biases):
+    slopeaxes.plot(slope)
+    
+
+#%% plot performance
+fig=plt.figure()
+ax1 = fig.add_axes([0,0,2,.8])
+ax2 = fig.add_axes([0,-1,2,.8])
+ax3 = fig.add_axes([0,-2,2,.8])
+df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
+subject_names = df_subject_wr['water_restriction_number'].unique()
+subject_names.sort()
+subject_names_legend = list()
+weightaxes = list()
+wateraxes = list()
+biasaxes = list()
+for i,wr_name in enumerate(subject_names):
+    df_allsessions = pd.read_csv(dj.config['locations.metadata_behavior']+wr_name+'.csv')
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {'subject_id':subject_id}
+    df_performance = pd.DataFrame((experiment.Session()*experiment.SessionDetails()*behavioranal.SessionPerformance()*behavioranal.SessionBias())&key)
+    #df_bias = pd.DataFrame(behavioranal.SessionBias()&key)
+    #%
+    performance = list()
+    prevwater = list()
+    for rownow in df_performance.iterrows():
+        rownow = rownow[1]
+        idx = (df_allsessions['Date']==str(rownow['session_date'])).idxmax()-1
+        if idx >= 0:
+            performance.append(rownow['performance_fitted_differential'])
+            prevwater.append((df_allsessions['Water during training'] + df_allsessions['Extra water'])[idx])
+        
+        
+    #%
+    ax1.plot(df_performance['session'],df_performance['performance_fitted_differential'])
+    ax2.plot(df_performance['session'],df_performance['performance_fitted_fractional'])
+    ax3.plot(df_performance['session'],np.abs(2*df_performance['session_bias_choice']-1))
+    subject_names_legend.append(wr_name)
+    weightaxes.append(fig.add_axes([0,-i-3,.8,.8]))
+    weightaxes[-1].plot(df_performance['session_weight'],df_performance['performance_fitted_differential'],'ko')
+    weightaxes[-1].set_xlabel('Weight (g)')
+    weightaxes[-1].set_ylabel('Performance')
+    weightaxes[-1].set_title(wr_name)
+    
+    wateraxes.append(fig.add_axes([1,-i-3,.8,.8]))
+    wateraxes[-1].plot(prevwater,performance,'ko')
+    wateraxes[-1].set_xlabel('Water consumed on the prevoius day (ml)')
+    wateraxes[-1].set_ylabel('Performance')
+    wateraxes[-1].set_title(wr_name)
+    
+    biasaxes.append(fig.add_axes([2,-i-3,.8,.8]))
+    biasaxes[-1].plot(np.abs(2*df_performance['session_bias_choice']-1),df_performance['performance_fitted_differential'],'ko')
+    biasaxes[-1].set_xlabel('Bias')
+    biasaxes[-1].set_ylabel('Performance')
+    biasaxes[-1].set_title(wr_name)
+    break
+    
+    
+ax1.legend(subject_names_legend)    
+ax1.set_title('Performance based on fitted filter and differential income')
+ax1.set_xlabel('Session')
+ax1.set_ylabel('Average likelihood')
+ax2.legend(subject_names_legend)    
+ax2.set_title('Performance based on fitted filter and fractional income')
+ax2.set_xlabel('Session')
+ax2.set_ylabel('Average likelihood')
+ax3.legend(subject_names_legend)    
+ax3.set_title('Bias in each session')
+ax3.set_xlabel('Session')
+ax3.set_ylabel('Bias')
+#%% run-length histogram
+wr_name = 'FOR02'
+minsession = 8
+subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+key = {
+        'subject_id':subject_id,
+        } 
+df_runs = pd.DataFrame(behavioranal.SessionRuns()&key)
+df_runs_now = df_runs[df_runs['session']>=minsession]
+fig=plt.figure()
+ax1 = fig.add_axes([0,0,.8,.8])
+ax1.hist(df_runs_now['run_length'],np.arange(-.5,50.5,1))
+ax1.set_xlabel('run length (trial)')
+ax2 = fig.add_axes([1,0,.8,.8])
+ax2.hist(df_runs_now['run_consecutive_misses'],np.arange(-.5,20.5,1))
+ax2.set_xlabel('number of consecutive misses before switch (trial)')
+ax3 = fig.add_axes([0,-1,.8,.8])
+ax3.plot(df_runs_now['run_hits'],df_runs_now['run_misses'],'ko',markersize = 1)
+ax3.set_xlabel('number of hits in the run')
+ax3.set_ylabel('number of misses in the run')
+ax4 = fig.add_axes([1,-1,.8,.8])
+ax4.plot(df_runs_now['run_hits'],df_runs_now['run_consecutive_misses'],'ko',markersize = 1)
+ax4.set_xlabel('number of hits in the run')
+ax4.set_ylabel('number of consecutive misses before switch')
+#%% licks on miss trials
+maxlickinterval = .2
+wr_name = 'FOR03'
+session = 11
+subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+key = {
+        'subject_id':subject_id,
+        'session':session
+        }   
+df_lickrhythm = pd.DataFrame(((experiment.BehaviorTrial()*experiment.ActionEvent()) & key & 'outcome = "hit"')*(lab.WaterRestriction &key)*behavioranal.TrialReactionTime())
+
+#%
+df_lickrhythm['licktime'] = np.nan
+df_lickrhythm['licktime'] = df_lickrhythm['action_event_time']-df_lickrhythm['first_lick_time']
+df_lickrhythm['lickdirection'] = np.nan
+df_lickrhythm.loc[df_lickrhythm['action_event_type'] == 'left lick','lickdirection'] = 'left'
+df_lickrhythm.loc[df_lickrhythm['action_event_type'] == 'right lick','lickdirection'] = 'right'
+df_lickrhythm['firs_licktime_on_the_other_side'] = np.nan
+df_lickrhythm['lickboutlength'] = np.nan
+leftlickboutlengths = list()
+rightlickboutlengths = list()
+for trial in df_lickrhythm['trial'].unique():
+    firs_lick_on_the_other_side = float(np.min(df_lickrhythm.loc[(df_lickrhythm['trial'] == trial) & (df_lickrhythm['lickdirection'] != df_lickrhythm['trial_choice']) & (df_lickrhythm['licktime'] > 0) ,'licktime']))
+    if np.isnan(firs_lick_on_the_other_side):
+        firs_lick_on_the_other_side = np.inf
+    df_lickrhythm.loc[df_lickrhythm['trial'] == trial,'firs_licktime_on_the_other_side'] = firs_lick_on_the_other_side
+    lickbouttimes = df_lickrhythm.loc[(df_lickrhythm['trial'] == trial) & (df_lickrhythm['lickdirection'] == df_lickrhythm['trial_choice']) & (df_lickrhythm['licktime'] < firs_lick_on_the_other_side) & (df_lickrhythm['licktime'] >= 0),'licktime']
+    if len(lickbouttimes)>1 and any(lickbouttimes.diff().values>maxlickinterval):
+        lickbouttimes  = lickbouttimes[:np.where(lickbouttimes.diff().values>maxlickinterval)[0][0]]
+    lickboutlenghtnow = float(np.max(lickbouttimes))
+    df_lickrhythm.loc[df_lickrhythm['trial'] == trial,'lickboutlength'] = lickboutlenghtnow 
+    if df_lickrhythm.loc[df_lickrhythm['trial']==trial,'trial_choice'].values[0] == 'left':
+        leftlickboutlengths.append(lickboutlenghtnow)
+    else:
+        rightlickboutlengths.append(lickboutlenghtnow)
+#%   
+xlims = [0, 5]
+fig=plt.figure()
+ax1 = fig.add_axes([0,0,.8,.8])
+leftidxtoplot = (df_lickrhythm['trial_choice']=='left')& (df_lickrhythm['licktime']<= df_lickrhythm['lickboutlength'] )
+left = ax1.hist(np.asarray(df_lickrhythm.loc[leftidxtoplot,'licktime'].values,dtype = 'float'),500)
+ax1.set_xlim(xlims)
+ax2 = fig.add_axes([1,0,.8,.8])
+rightidxtoplot = (df_lickrhythm['trial_choice']=='right')& (df_lickrhythm['licktime']<= df_lickrhythm['lickboutlength'] )
+right = ax2.hist(np.asarray(df_lickrhythm.loc[rightidxtoplot,'licktime'].values,dtype = 'float'),500)
+ax2.set_xlim(xlims)
+
+ax3 = fig.add_axes([0,-1,.8,.8])
+ax3.plot(df_lickrhythm['licktime'][leftidxtoplot],df_lickrhythm['trial'][leftidxtoplot],'k|',markersize = 2)
+ax3.set_xlim(xlims)
+ax4 = fig.add_axes([1,-1,.8,.8])
+ax4.plot(df_lickrhythm['licktime'][rightidxtoplot],df_lickrhythm['trial'][rightidxtoplot],'k|',markersize = 2)
+ax4.set_xlim(xlims)
+ax5 = fig.add_axes([0,-2,.8,.8])
+a = ax5.hist(leftlickboutlengths)
+ax5.set_xlim(xlims)
+ax6 = fig.add_axes([1,-2,.8,.8])
+a = ax6.hist(rightlickboutlengths)
+ax6.set_xlim(xlims)
 #%%
+
 df_psych_boxcar = pd.DataFrame(lab.WaterRestriction()*behavioranal.SubjectPsychometricCurveBoxCar())
 df_psych_fitted = pd.DataFrame(lab.WaterRestriction()*behavioranal.SubjectPsychometricCurveFitted())
 fig=plt.figure()
