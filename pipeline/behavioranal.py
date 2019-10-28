@@ -17,6 +17,9 @@ import bootstrapped.bootstrap as bs
 import bootstrapped.stats_functions as bs_stats
 schema = dj.schema(get_schema_name('behavior-anal'),locals())
 
+logistic_regression_trials_back = 30
+logistic_regression_first_session = 8
+logistic_regression_max_bias = .5 # 0 = no bias, 1 = full bias
 #%%
 def calculate_average_likelihood(local_income,choice,parameters):
     #%%
@@ -31,13 +34,14 @@ def calculate_average_likelihood(local_income,choice,parameters):
     else:
         prediction = local_income*parameters['slope']+parameters['c']
         #prediction = np.polyval([parameters['slope'],parameters['c']],local_income)
-    score = np.zeros(len(prediction))
-    score[choice==1]=np.log(prediction[choice==1])
-    score[choice==0]=np.log(1-prediction[choice==0])
-    score = score[~np.isinf(score)&~np.isnan(score)]
-    SCORE = np.exp(sum(score)/len(score))
-    #%%
-    return SCORE
+    if len(prediction) > 0:
+        score = np.zeros(len(prediction))
+        score[choice==1]=np.log(prediction[choice==1])
+        score[choice==0]=np.log(1-prediction[choice==0])
+        score = score[~np.isinf(score)&~np.isnan(score)]
+        SCORE = np.exp(sum(score)/len(score))
+        return SCORE
+    
 
 def calculate_average_likelihood_series(local_income,choice,parameters,local_filter=np.ones(10)):
     local_filter = local_filter/sum(local_filter)
@@ -179,7 +183,34 @@ class TrialLickBoutLenght(dj.Computed):
             lickboutlenghtnow = 0
         key['lick_bout_length'] = lickboutlenghtnow
         self.insert1(key,skip_duplicates=True)
-            
+        
+        
+@schema
+class SessionStats(dj.Computed):
+    definition = """
+    -> experiment.Session
+    ---
+    session_trialnum : int #number of trials
+    session_blocknum : int #number of blocks
+    session_hits : int #number of hits
+    session_misses : int #number of misses
+    session_ignores : int #number of ignores
+    session_autowaters : int #number of autowaters
+    session_length : decimal(10, 4) #length of the session in seconds
+    """
+    def make(self, key):
+        keytoadd = key
+        keytoadd['session_trialnum'] = len(experiment.SessionTrial()&key)
+        keytoadd['session_blocknum'] = len(experiment.SessionBlock()&key)
+        keytoadd['session_hits'] = len(experiment.BehaviorTrial()&key&'outcome = "hit"')
+        keytoadd['session_misses'] = len(experiment.BehaviorTrial()&key&'outcome = "miss"')
+        keytoadd['session_ignores'] = len(experiment.BehaviorTrial()&key&'outcome = "ignore"')
+        keytoadd['session_autowaters'] = len(experiment.TrialNote & key &'trial_note_type = "autowater"')
+        if keytoadd['session_trialnum'] > 0:
+            keytoadd['session_length'] = float(((experiment.SessionTrial() & key).fetch('trial_stop_time')).max())
+        else:
+            keytoadd['session_length'] = 0
+        self.insert1(keytoadd,skip_duplicates=True)
 @schema
 class SessionReactionTimeHistogram(dj.Computed):
     definition = """
@@ -379,7 +410,10 @@ class SessionBias(dj.Computed):
             lick_left = sum(licks =='left lick')
             lick_right = sum(licks =='right lick')
             choice_bias = choice_right/(choice_right+choice_left)
-            lick_bias = lick_right/(lick_right+lick_left)
+            if len(licks)>0:
+                lick_bias = lick_right/(lick_right+lick_left)
+            else:
+                lick_bias = choice_bias
             key['session_bias_choice'] = choice_bias
             key['session_bias_lick'] = lick_bias
             self.insert1(key,skip_duplicates=True)
@@ -450,7 +484,7 @@ class BlockRewardRatio(dj.Computed):
             key['block_reward_ratio_second_tertile_differential'] = block_reward_ratio_second_tertile_differential
             key['block_reward_ratio_third_tertile_differential'] = block_reward_ratio_third_tertile_differential
             #%%
-        print(key)
+        #print(key)
         self.insert1(key,skip_duplicates=True)
 
 @schema
@@ -586,7 +620,7 @@ class SessionFittedChoiceCoefficients(dj.Computed):
     def make(self, key):
         df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key))
         if len(df_behaviortrial)>0:
-            trials_back = 15
+            trials_back = logistic_regression_trials_back
             idx = np.argsort(df_behaviortrial['trial'])
             choices = df_behaviortrial['trial_choice'][idx].values
             choices_digitized = np.zeros(len(choices))
@@ -618,6 +652,7 @@ class SessionFittedChoiceCoefficients(dj.Computed):
                 key['score'] = score
                 self.insert1(key,skip_duplicates=True)
                 
+                
 @schema
 class SubjectFittedChoiceCoefficientsRNRC(dj.Computed):    
     definition = """
@@ -629,13 +664,26 @@ class SubjectFittedChoiceCoefficientsRNRC(dj.Computed):
     score_subject :  decimal(8,4)
     """    
     def make(self, key):
-        trials_back = 30
-        first_session = 8
+        trials_back = logistic_regression_trials_back 
+        first_session = logistic_regression_first_session
+        max_bias = logistic_regression_max_bias
         label = list()
         data = list()
         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-            df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            #%%
+            df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
+            df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)   
+            #%%
+            #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
             if len(df_behaviortrial_all)>0:
                 sessions = np.unique(df_behaviortrial_all['session'])
                 for session in sessions:
@@ -654,7 +702,7 @@ class SubjectFittedChoiceCoefficientsRNRC(dj.Computed):
                         for trial in range(trials_back,len(rewards_digitized)):
                             if choices_digitized[trial] != 0:
                                 label.append(choices_digitized[trial])
-                                data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+                                data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
                 label = np.array(label)
                 data = np.matrix(data)
                 if len(data) > 1:
@@ -666,8 +714,8 @@ class SubjectFittedChoiceCoefficientsRNRC(dj.Computed):
                     coefficients = logisticRegr.coef_
                     coefficients = coefficients[0]
                     coeff_rewards = coefficients[trials_back-1::-1]
-                    coeff_nonrewards = coefficients[-trials_back-1:trials_back-1:-1]
-                    coeff_choices = coefficients[-1:-trials_back-1:-1]
+                    coeff_choices = coefficients[-trials_back-1:trials_back-1:-1]
+                    coeff_nonrewards = coefficients[-1:-trials_back-1:-1]
                     key['coefficients_rewards_subject'] = coeff_rewards
                     key['coefficients_choices_subject'] = coeff_choices
                     key['coefficients_nonrewards_subject'] = coeff_nonrewards
@@ -687,13 +735,24 @@ class SubjectFittedChoiceCoefficientsRC(dj.Computed):
     score_subject :  decimal(8,4)
     """    
     def make(self, key):
-        trials_back = 30
-        first_session = 8
+        trials_back = logistic_regression_trials_back 
+        first_session = logistic_regression_first_session
+        max_bias = logistic_regression_max_bias
         label = list()
         data = list()
         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-            df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
+            df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
+            #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
             if len(df_behaviortrial_all)>0:
                 sessions = np.unique(df_behaviortrial_all['session'])
                 for session in sessions:
@@ -731,6 +790,72 @@ class SubjectFittedChoiceCoefficientsRC(dj.Computed):
                 else:
                     print('not enough data for' + wrnumber)
                     
+                    
+@schema
+class SubjectFittedChoiceCoefficientsNRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_nonrewards_subject : longblob
+    coefficients_choices_subject  : longblob
+    score_subject :  decimal(8,4)
+    """    
+    def make(self, key):
+        trials_back = logistic_regression_trials_back 
+        first_session = logistic_regression_first_session
+        max_bias = logistic_regression_max_bias
+        label = list()
+        data = list()
+        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+            wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
+            df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
+            df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
+            #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            if len(df_behaviortrial_all)>0:
+                sessions = np.unique(df_behaviortrial_all['session'])
+                for session in sessions:
+                    if session >= first_session:
+                        df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                        idx = np.argsort(df_behaviortrial['trial'])
+                        choices = df_behaviortrial['trial_choice'].values[idx]
+                        choices_digitized = np.zeros(len(choices))
+                        choices_digitized[choices=='right']=1
+                        choices_digitized[choices=='left']=-1
+                        outcomes = df_behaviortrial['outcome'].values[idx]
+                        nonrewards_digitized = choices_digitized.copy()
+                        nonrewards_digitized[outcomes=='hit']=0
+                        for trial in range(trials_back,len(nonrewards_digitized)):
+                            if choices_digitized[trial] != 0:
+                                label.append(choices_digitized[trial])
+                                data.append(np.concatenate([nonrewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+                label = np.array(label)
+                data = np.matrix(data)
+                if len(data) > 1:
+                    x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                    logisticRegr = LogisticRegression(solver = 'lbfgs')
+                    logisticRegr.fit(x_train, y_train)
+                    #predictions = logisticRegr.predict(x_test)
+                    score = logisticRegr.score(x_test, y_test)        
+                    coefficients = logisticRegr.coef_
+                    coefficients = coefficients[0]
+                    coeff_nonrewards = coefficients[trials_back-1::-1]
+                    coeff_choices = coefficients[-1:trials_back-1:-1]
+                    key['coefficients_nonrewards_subject'] = coeff_nonrewards
+                    key['coefficients_choices_subject'] = coeff_choices
+                    key['score_subject'] = score
+                    self.insert1(key,skip_duplicates=True)    
+                    print(wrnumber + ' coefficients fitted for reward+choice')
+                else:
+                    print('not enough data for' + wrnumber)
+                    
 @schema
 class SubjectFittedChoiceCoefficientsRNR(dj.Computed):    
     definition = """
@@ -741,13 +866,24 @@ class SubjectFittedChoiceCoefficientsRNR(dj.Computed):
     score_subject :  decimal(8,4)
     """    
     def make(self, key):
-        trials_back = 30
-        first_session = 8
+        trials_back = logistic_regression_trials_back 
+        first_session = logistic_regression_first_session
+        max_bias = logistic_regression_max_bias
         label = list()
         data = list()
         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-            df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
+            df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
+            #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
             if len(df_behaviortrial_all)>0:
                 sessions = np.unique(df_behaviortrial_all['session'])
                 for session in sessions:
@@ -798,13 +934,24 @@ class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):
     """    
     def make(self, key):
         #print(key)
-        trials_back = 30
-        first_session = 8
+        trials_back = logistic_regression_trials_back 
+        first_session = logistic_regression_first_session
+        max_bias = logistic_regression_max_bias
         label = list()
         data = list()
         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-            df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
+            df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
+            #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
             if len(df_behaviortrial_all)>0:
                 sessions = np.unique(df_behaviortrial_all['session'])
                 for session in sessions:
@@ -841,15 +988,145 @@ class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):
                     print('not enough data for' + wrnumber)
             else:
                 print('not enough data for ' + wrnumber)
+                
+@schema
+class SubjectFittedChoiceCoefficientsOnlyUnRewardeds(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_nonrewards_subject : longblob
+    score_subject :  decimal(8,4)
+    """    
+    def make(self, key):
+        #print(key)
+        trials_back = logistic_regression_trials_back 
+        first_session = logistic_regression_first_session
+        max_bias = logistic_regression_max_bias
+        label = list()
+        data = list()
+        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+            wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
+            df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
+            df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
+            #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            if len(df_behaviortrial_all)>0:
+                sessions = np.unique(df_behaviortrial_all['session'])
+                for session in sessions:
+                    if session >= first_session:
+                        df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                        idx = np.argsort(df_behaviortrial['trial'])
+                        choices = df_behaviortrial['trial_choice'].values[idx]
+                        choices_digitized = np.zeros(len(choices))
+                        choices_digitized[choices=='right']=1
+                        choices_digitized[choices=='left']=-1
+                        outcomes = df_behaviortrial['outcome'].values[idx]
+                        unrewards_digitized = choices_digitized.copy()
+                        unrewards_digitized[outcomes=='hit']=0
+                        for trial in range(trials_back,len(unrewards_digitized)):
+                            if choices_digitized[trial] != 0:
+                                label.append(choices_digitized[trial])
+                                data.append(unrewards_digitized[trial-trials_back:trial])
+                label = np.array(label)
+                data = np.matrix(data)
+                if len(data) > 1:
+                    x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                    logisticRegr = LogisticRegression(solver = 'lbfgs')
+                    logisticRegr.fit(x_train, y_train)
+                    #predictions = logisticRegr.predict(x_test)
+                    score = logisticRegr.score(x_test, y_test)        
+                    coefficients = logisticRegr.coef_
+                    coefficients = coefficients[0]
+                    coeff_nonrewards = coefficients[::-1]
+                    key['coefficients_nonrewards_subject'] = coeff_nonrewards
+                    key['score_subject'] = score
+                    self.insert1(key,skip_duplicates=True)
+                    print(wrnumber + ' coefficients fitted for only reward')
+                else:
+                    print('not enough data for' + wrnumber)
+            else:
+                print('not enough data for ' + wrnumber)                
 # =============================================================================
 #         else:
 #             print('no WR number for this guy')
 # =============================================================================
-            
+
+@schema
+class SubjectFittedChoiceCoefficientsOnlyChoices(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_choices_subject : longblob
+    score_subject :  decimal(8,4)
+    """    
+    def make(self, key):
+        #print(key)
+        trials_back = logistic_regression_trials_back 
+        first_session = logistic_regression_first_session
+        max_bias = logistic_regression_max_bias
+        label = list()
+        data = list()
+        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+            wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
+            df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
+            df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
+            #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
+            if len(df_behaviortrial_all)>0:
+                sessions = np.unique(df_behaviortrial_all['session'])
+                for session in sessions:
+                    if session >= first_session:
+                        df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                        idx = np.argsort(df_behaviortrial['trial'])
+                        choices = df_behaviortrial['trial_choice'].values[idx]
+                        choices_digitized = np.zeros(len(choices))
+                        choices_digitized[choices=='right']=1
+                        choices_digitized[choices=='left']=-1
+                        for trial in range(trials_back,len(choices_digitized)):
+                            if choices_digitized[trial] != 0:
+                                label.append(choices_digitized[trial])
+                                data.append(choices_digitized[trial-trials_back:trial])
+                label = np.array(label)
+                data = np.matrix(data)
+                if len(data) > 1:
+                    x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                    logisticRegr = LogisticRegression(solver = 'lbfgs')
+                    logisticRegr.fit(x_train, y_train)
+                    #predictions = logisticRegr.predict(x_test)
+                    score = logisticRegr.score(x_test, y_test)        
+                    coefficients = logisticRegr.coef_
+                    coefficients = coefficients[0]
+                    coeff_rewards = coefficients[::-1]
+                    key['coefficients_choices_subject'] = coeff_rewards
+                    key['score_subject'] = score
+                    self.insert1(key,skip_duplicates=True)
+                    print(wrnumber + ' coefficients fitted for only reward')
+                else:
+                    print('not enough data for' + wrnumber)
+            else:
+                print('not enough data for ' + wrnumber)                
+# =============================================================================
+#         else:
+#             print('no WR number for this guy')
+# =============================================================================            
             
 
 @schema
-class SubjectFittedChoiceCoefficientsVSTime(dj.Computed):    
+class SubjectFittedChoiceCoefficientsVSTime(dj.Computed):    ## TODO: BIAS correction
     definition = """
     -> lab.Subject
     ---
@@ -859,11 +1136,11 @@ class SubjectFittedChoiceCoefficientsVSTime(dj.Computed):
     def make(self, key):
         #print(key)
         
-        timesteps_back = 120
-        first_session = 8
+        timesteps_back = 90
+        first_session = logistic_regression_first_session
         label = list()
         data = list()
-        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+        if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0 and len(experiment.TrialEvent()&key)>0:
             #%%
             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
             
@@ -959,20 +1236,21 @@ class SessionPsychometricDataFitted(dj.Computed):
     """  
     def make(self,key):
         warnings.filterwarnings("ignore", category=RuntimeWarning)
-        df_coeff = pd.DataFrame(SubjectFittedChoiceCoefficientsOnlyRewards())
-        local_filter = df_coeff['coefficients_rewards_subject'].mean()
-        local_filter = local_filter/sum(local_filter)
-        df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
-        if len(df_behaviortrial)>1:
-            local_fractional_income, choice_local_fractional_income, trialnum_fractional, local_differential_income, choice_local_differential_income, trialnum_differential  = calculate_local_income(df_behaviortrial,local_filter)
-            key['local_fractional_income'] = local_fractional_income
-            key['choice_local_fractional_income'] = choice_local_fractional_income
-            key['trialnum_local_fractional_income'] = trialnum_fractional
-            key['local_differential_income'] = local_differential_income
-            key['choice_local_differential_income']= choice_local_differential_income
-            key['trialnum_local_differential_income'] = trialnum_differential
-            key['local_filter'] = local_filter
-            self.insert1(key,skip_duplicates=True)
+        df_coeff = pd.DataFrame(SubjectFittedChoiceCoefficientsOnlyRewards()&key)
+        if len(df_coeff)>0:
+            local_filter = df_coeff['coefficients_rewards_subject'][0]#.mean()
+            local_filter = local_filter/sum(local_filter)
+            df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
+            if len(df_behaviortrial)>1:
+                local_fractional_income, choice_local_fractional_income, trialnum_fractional, local_differential_income, choice_local_differential_income, trialnum_differential  = calculate_local_income(df_behaviortrial,local_filter)
+                key['local_fractional_income'] = local_fractional_income
+                key['choice_local_fractional_income'] = choice_local_fractional_income
+                key['trialnum_local_fractional_income'] = trialnum_fractional
+                key['local_differential_income'] = local_differential_income
+                key['choice_local_differential_income']= choice_local_differential_income
+                key['trialnum_local_differential_income'] = trialnum_differential
+                key['local_filter'] = local_filter
+                self.insert1(key,skip_duplicates=True)
 
 @schema    
 class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
@@ -1215,5 +1493,9 @@ class SessionPerformance(dj.Computed):
             c = df_psycurve_differential['linear_fit_c'][0]
             parameters = {'fit_type':'sigmoid','mu':mu,'sigma':sigma}
             key['performance_fitted_differential'] =  calculate_average_likelihood(local_income,choice,parameters)
-            self.insert1(key,skip_duplicates=True)
+            if key['performance_fitted_differential']!= None and key['performance_fitted_fractional']!= None and key['performance_boxcar_fractional']!= None and key['performance_boxcar_differential']!= None :
+                self.insert1(key,skip_duplicates=True)
+            else:
+                print('couldn''t calculate performance for the following:')
+                print(key)
     
