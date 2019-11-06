@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta, time
 import pandas as pd
 import numpy as np
@@ -11,6 +12,27 @@ import warnings
 import bootstrapped.bootstrap as bs
 import bootstrapped.stats_functions as bs_stats
 #%%
+
+
+def draw_bs_pairs_linreg(x, y, size=1): 
+    """Perform pairs bootstrap for linear regression."""#from serhan aya
+
+    # Set up array of indices to sample from: inds
+    inds = np.arange(len(x))
+
+    # Initialize replicates: bs_slope_reps, bs_intercept_reps
+    bs_slope_reps = np.empty(size)
+    bs_intercept_reps = np.empty(shape=size)
+
+    # Generate replicates
+    for i in range(size):
+        bs_inds = np.random.choice(inds, size=len(inds)) # sampling the indices (1d array requirement)
+        bs_x, bs_y = x[bs_inds], y[bs_inds]
+        bs_slope_reps[i], bs_intercept_reps[i] = np.polyfit(bs_x, bs_y, 1)
+
+    return bs_slope_reps, bs_intercept_reps
+
+
 def merge_dataframes_with_nans(df_1,df_2,basiscol):
     basiscol = 'trial'
     colstoadd = list()
@@ -267,7 +289,7 @@ def plot_reward_rate(wr_name):
 
 def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4, model = 'fitted differential',reward_ratio_binnum = 10):
     
-#%%    
+  
 # =============================================================================
 #     wr_name = 'FOR01'
 #     session = 28
@@ -448,9 +470,9 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4, model = 'fitted
  #%%   
 def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differential', choice_filter = np.ones(5), local_filter = np.ones(10), RT_filter = np.ones(10), fit = 'not_specified'):
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    #%%
+    #%
 # =============================================================================
-#     wr_name = 'FOR01'
+#     wr_name = 'W-St-L-Rnd'
 #     session = 'last'
 #     model = 'fitted fractional'
 #     choice_filter = np.ones(5)
@@ -559,14 +581,14 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
     ax1.set_yticks((0,1))
     ax1.set_yticklabels(('left','right'))
     ax1.set_title(wr_name + '   -   session: ' + str(session) + ' - '+str(df_session['session_date'][0]))
-    ax1.legend()
+    ax1.legend(fontsize='small',loc = 'upper right')
     
     ax2=fig.add_axes([0,-1,2,.8])
     ax2.plot(df_behaviortrial['trial'],df_behaviortrial['p_reward_left'],'r-')
     ax2.plot(df_behaviortrial['trial'],df_behaviortrial['p_reward_right'],'b-')
     ax2.set_ylabel('Reward probability')
     ax2.set_xlabel('Trial #')
-    ax2.legend(['left','right'])
+    ax2.legend(['left','right'],fontsize='small',loc = 'upper right')
     
     
     
@@ -644,8 +666,12 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
     ax3.set_xlabel('Trial #')
     ax3.set_yscale('log')
     minyval = df_behaviortrial.loc[df_behaviortrial['reaction_time']>=0,'reaction_time'].min()#df_behaviortrial.loc[df_behaviortrial['lick_bout_length']>=0,'lick_bout_length'].min()
-    maxyval = np.max([df_behaviortrial.loc[df_behaviortrial['reaction_time']>=0,'reaction_time'].max(),df_behaviortrial.loc[df_behaviortrial['lick_bout_length']>=0,'lick_bout_length'].max()])
-    ax3.set_ylim([float(minyval),float(maxyval)])
+    maxyval = np.nanmax([df_behaviortrial.loc[df_behaviortrial['reaction_time']>=0,'reaction_time'].max(),df_behaviortrial.loc[df_behaviortrial['lick_bout_length']>=0,'lick_bout_length'].max()])
+    try:
+        ax3.set_ylim([float(minyval),float(maxyval)])
+    except:
+        pass
+            
     ax4 = fig.add_axes([0,-4,.8,.8])
     ax4.hist(np.asarray(np.diff(df_behaviortrial['trial_start_time'].values),dtype = 'float'))
     ax4.set_xlabel('ITI (s)')
@@ -669,13 +695,20 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
 #ax2.set_xlim(00, 600)
 #%%
 
-def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum = 20):
+def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum = 20,max_bias = .5,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False):
     #%%
 # =============================================================================
-#     wr_name = 'FOR07'
+#     wr_name = 'FOR01'
 #     minsession = 8
 #     mintrialnum = 30
+#     max_bias = .5
+#     bootstrapnum = 100
+#     only_blocks_above_median = False
 # =============================================================================
+    
+    allslopes = list()
+    meanslopes = list()
+    slopes_ci = list()
     metricnames = ['block_choice_ratio','block_choice_ratio_first_tertile','block_choice_ratio_second_tertile','block_choice_ratio_third_tertile']
     metricnames_xaxes = ['block_reward_ratio_differential','block_reward_ratio_first_tertile_differential','block_reward_ratio_second_tertile_differential','block_reward_ratio_third_tertile_differential']
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
@@ -683,12 +716,25 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
            'subject_id':subject_id,
            #'session': session
            }
-    df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()) & key )
+    df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockStats()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()*behavioranal.SessionBias()) & key )
     #%
+    
+    #%
+    df_choice_reward_rate['biasval'] = np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
+    
     df_choice_reward_rate['block_relative_value']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
     df_choice_reward_rate['total_reward_rate']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
-    needed = (df_choice_reward_rate['total_reward_rate']<= 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum)
+    needed = (df_choice_reward_rate['total_reward_rate']<= 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias)
     df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
+    if only_blocks_above_median:
+        medianval = df_choice_reward_rate['block_trialnum'].median()
+        df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_trialnum'] >= medianval]
+    elif only_blocks_above_mean:
+        medianval = df_choice_reward_rate['block_trialnum'].mean()
+        df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_trialnum'] >= medianval]
+    elif only_blocks_below_mean:
+        medianval = df_choice_reward_rate['block_trialnum'].mean()
+        df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_trialnum'] <= medianval]
     #%
     fig=plt.figure()
     
@@ -746,11 +792,18 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
         todel = (np.isinf(xvals) | np.isinf(yvals)) | (yvals ==0) | (xvals ==0) | (np.isnan(xvals) | np.isnan(yvals))
         xvals = xvals[todel==False]
         yvals = yvals[todel==False]
+        slopes, intercepts = draw_bs_pairs_linreg(xvals, yvals, size=bootstrapnum)
         p = np.polyfit(xvals,yvals,1)
         #%
         ax_3.plot(xvals,yvals,'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
         ax_3.plot([-3,3],[-3,3],'k-')
         ax_3.plot([-3,3],np.polyval(p,[-3,3]),'r-',linewidth = 3)
+        for i in range(bootstrapnum):
+            ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color='red')
         ax_3.set_xlabel('log reward rate log(r_R/r_L)')
         ax_3.set_ylabel('log choice rate log(c_R/c_L)')
-        ax_3.set_title('slope: {:2.2f}'.format(p[0]))
+        ax_3.set_title('slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5)))
+        allslopes.append(slopes)
+        meanslopes.append(np.mean(slopes))
+        slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
+    return metricnames, meanslopes, slopes_ci, allslopes
