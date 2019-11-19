@@ -7,7 +7,15 @@ import datajoint as dj
 
 
 def get_schema_name(name):
-    return 'group_shared_foraging-'+name
+    if dj.config['project'] == 'foraging' and name == 'lab':
+        #print('map_v1_'+name)
+        return 'map_v1_'+name
+    elif dj.config['project'] == 'foraging':
+# =============================================================================
+#         print('rozmar_foraging-'+name)
+#         return 'rozmar_foraging-'+name
+# =============================================================================
+        return 'group_shared_foraging-'+name
     #return 'rozmar_foraging-'+name
 # =============================================================================
 #     try:
@@ -39,8 +47,24 @@ def drop_every_schema():
     schema = dj.schema('group_shared_foraging-lab')
     schema.drop(force=True) 
     
-    
-
+# =============================================================================
+#      #%% Drop everything   
+#  #%%
+#     schema = dj.schema('rozmar_foraging-behavior-anal')
+#     schema.drop(force=True) 
+#      #%%
+#     schema = dj.schema('rozmar_foraging-ephys-anal')
+#     schema.drop(force=True)
+#     #%%
+#     schema = dj.schema('rozmar_foraging-ephys_patch')
+#     schema.drop(force=True)
+#     #%%
+#     schema = dj.schema('rozmar_foraging-experiment')
+#     schema.drop(force=True)
+#     #%%
+#     schema = dj.schema('rozmar_foraging-lab')
+#     schema.drop(force=True) 
+# =============================================================================
 # =============================================================================
 # class InsertBuffer(object):
 #     '''
