@@ -6,7 +6,6 @@ import time as timer
 #% connect to server
 import datajoint as dj
 dj.conn()
-dj.config['project'] = 'foraging'
 from pipeline import pipeline_tools
 from pipeline import lab, experiment
 #%%
