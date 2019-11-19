@@ -48,7 +48,7 @@ class Task(dj.Lookup):
          ('audio mem', 'auditory working memory task'),
          ('s1 stim', 'S1 photostimulation task (2AFC)'),
          ('foraging', 'foraging task based on Bari-Cohen 2019'),
-         ('del foraging','foraging task based on Bari-Cohen 2019 with variable delay period')
+         ('foraging 3lp','foraging task based on Bari-Cohen 2019 with variable delay period')
          ]
 
 
@@ -71,14 +71,8 @@ class TaskProtocol(dj.Lookup):
          ('s1 stim', 7, 'mini-distractors and full distractors (only at late delay)'),
          ('s1 stim', 8, 'mini-distractors and full distractors (only at late delay), with different levels of the mini-stim and the full-stim during sample                 period'),
          ('s1 stim', 9, 'mini-distractors and full distractors (only at late delay), with different levels of the mini-stim and the full-stim during sample period'),
-         ('foraging', 10, 'moving lickports, fixed delay period, early lick punishment, sound GO cue then free choice'),
-         ('del foraging', 11, 'moving lickports, variable delay period, early lick punishment, sound GO cue then free choice'),
-         ('foraging', 12, 'NO moving lickports, fixed delay period, NO early lick punishment, sound GO cue then free choice'),
-         ('foraging', 13, 'NO moving lickports, fixed delay period, early lick punishment, sound GO cue then free choice'),
-         ('foraging', 14, 'moving lickports, fixed delay period, NO early lick punishment, sound GO cue then free choice'),
-         ('del foraging', 15, 'NO moving lickports, fixed delay period, NO early lick punishment, sound GO cue then free choice'),
-         ('del foraging', 16, 'NO moving lickports, variable delay period, early lick punishment, sound GO cue then free choice'),
-         ('del foraging', 17, 'moving lickports, variable delay period, NO early lick punishment, sound GO cue then free choice'),
+         ('foraging', 100, 'moving lickports, delay period, early lick punishment, sound GO cue then free choice'),
+         ('foraging 3lp', 101, 'moving lickports, delay period, early lick punishment, sound GO cue then free choice from three lickports'),
          ]
 
 
@@ -99,7 +93,7 @@ class Photostim(dj.Manual):
     duration=null:  decimal(8,4)   # (s)
     waveform=null:  longblob       # normalized to maximal power. The value of the maximal power is specified for each PhotostimTrialEvent individually
     """
-
+#not used
 # =============================================================================
 #     class Profile(dj.Part):
 #         # NOT USED CURRENT
@@ -127,8 +121,9 @@ class SessionBlock(dj.Imported):
     ---
     block_uid : int  # unique across sessions/animals
     block_start_time : decimal(10, 4)  # (s) relative to session beginning
-    p_reward_left : decimal(8, 4)  # reward probability on the left waterport
-    p_reward_right : decimal(8, 4)  # reward probability on the right waterport
+    p_reward_left = null: decimal(8, 4)  # reward probability on the left waterport
+    p_reward_right = null : decimal(8, 4)  # reward probability on the right waterport
+    p_reward_middle = null : decimal(8, 4)  # reward probability on the middle waterport
     """
 
 @schema
@@ -137,7 +132,7 @@ class SessionTrial(dj.Imported):
     -> Session
     trial : smallint 		# trial number
     ---
-    trial_uid : int  # unique across sessions/animals
+    trial_uid : int  # unique across sessions
     trial_start_time : decimal(10, 4)  # (s) relative to session beginning 
     trial_stop_time : decimal(10, 4)  # (s) relative to session beginning 
     """
@@ -201,25 +196,27 @@ class SessionComment(dj.Manual):
 class SessionDetails(dj.Manual):
     definition = """
     -> Session
-    session_weight : decimal(8,4)
-    session_water_earned : decimal(8,4)
-    session_water_extra : decimal(8,4)
+    session_weight : decimal(8,4) # weight of the mouse at the beginning of the session
+    session_water_earned : decimal(8,4) # water earned by the mouse during the session
+    session_water_extra : decimal(8,4) # extra water provided after the session
     """
 
-
-@schema
-class Period(dj.Lookup):
-    definition = """
-    period: varchar(12)
-    ---
-    period_start: float  # (s) start of this period relative to GO CUE
-    period_end: float    # (s) end of this period relative to GO CUE
-    """
-
-    contents = [('sample', -2.4, -1.2),
-                ('delay', -1.2, 0.0),
-                ('response', 0.0, 1.2)]
-
+# NOT used
+# =============================================================================
+# @schema
+# class Period(dj.Lookup):
+#     definition = """
+#     period: varchar(12)
+#     ---
+#     period_start: float  # (s) start of this period relative to GO CUE
+#     period_end: float    # (s) end of this period relative to GO CUE
+#     """
+# 
+#     contents = [('sample', -2.4, -1.2),
+#                 ('delay', -1.2, 0.0),
+#                 ('response', 0.0, 1.2)]
+# 
+# =============================================================================
 
 # ---- behavioral trials ----
 
@@ -237,7 +234,7 @@ class Choice(dj.Lookup):
     # Choice of the mouse (if there is no instruction)
     trial_choice  : varchar(8) 
     """
-    contents = zip(('left', 'right','none'))
+    contents = zip(('left', 'right','middle','none'))
 
 @schema
 class Outcome(dj.Lookup):
@@ -264,11 +261,12 @@ class WaterValveData(dj.Imported):
     definition = """
     -> SessionTrial
     ----
-    water_valve_lateral_pos: int
-    water_valve_rostrocaudal_pos: int
-    water_valve_dorsoventral_pos: int
-    water_valve_time_left: decimal(5,4)
-    water_valve_time_right: decimal(5,4)
+    water_valve_lateral_pos = null: int # position value of the motor
+    water_valve_rostrocaudal_pos = null: int # position value of the motor
+    water_valve_dorsoventral_pos = null: int # position value of the motor
+    water_valve_time_left = null: decimal(5,4) # seconds of valve open time
+    water_valve_time_right = null: decimal(5,4) # seconds of valve open time
+    water_valve_time_middle = null: decimal(5,4) # seconds of valve open time
     """
 
 @schema
@@ -314,7 +312,9 @@ class ActionEventType(dj.Lookup):
     """
     contents =[  
        ('left lick', ''), 
-       ('right lick', '')]
+       ('right lick', ''),
+       ('middle lick', ''),
+       ]
 
 
 @schema
