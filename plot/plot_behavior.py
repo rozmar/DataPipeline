@@ -311,25 +311,25 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4, model = 'fitted
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataFitted()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_differential_income'][0]
         income_choice = df_local_income['choice_local_differential_income'][0]
-        income = df_local_income['local_differential_income'][0]
+        income = df_local_income['local_differential_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveFittedDifferential()& 'subject_id = '+str(subject_id))
     elif model == 'fitted fractional':
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataFitted()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_fractional_income'][0]
         income_choice = df_local_income['choice_local_fractional_income'][0]
-        income = df_local_income['local_fractional_income'][0]
+        income = df_local_income['local_fractional_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveFittedFractional()& 'subject_id = '+str(subject_id))
     elif model == 'boxcar differential':
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataBoxCar()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_differential_income'][0]
         income_choice = df_local_income['choice_local_differential_income'][0]
-        income = df_local_income['local_differential_income'][0]
+        income = df_local_income['local_differential_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveBoxCarDifferential()& 'subject_id = '+str(subject_id))
     elif model == 'boxcar fractional':
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataBoxCar()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_fractional_income'][0]
         income_choice = df_local_income['choice_local_fractional_income'][0]
-        income = df_local_income['local_fractional_income'][0]
+        income = df_local_income['local_fractional_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveBoxCarFractional()& 'subject_id = '+str(subject_id))
     else:
         print('model not understood')
@@ -472,13 +472,15 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 #%%
 
-    wr_name = 'FOR09'
-    session = 'last'
-    model = 'fitted fractional'
-    choice_filter = np.ones(20)
-    local_filter = np.ones(10)
-    RT_filter = np.ones(10)
-    fit = 'not_specified'
+# =============================================================================
+#     wr_name = 'FOR09'
+#     session = 'last'
+#     model = 'fitted fractional'
+#     choice_filter = np.ones(20)
+#     local_filter = np.ones(10)
+#     RT_filter = np.ones(10)
+#     fit = 'not_specified'
+# =============================================================================
 
     choice_filter = np.asarray(choice_filter)/sum(choice_filter)
     
@@ -496,7 +498,7 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
             df_reactiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
     else:
         df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()* behavioranal.TrialReactionTime).fetch())
-        df_reactiontimestiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
+        df_reactiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
     
     if (behavioranal.SessionTrainingType() & 'subject_id = ' + str(subject_id) & 'session = ' + str(session)).fetch('session_task_protocol')[0] == 100: #2 lickport
         plottype = '2lickport'
@@ -508,25 +510,25 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataFitted()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_differential_income'][0]
         income_choice = df_local_income['choice_local_differential_income'][0]
-        income = df_local_income['local_differential_income'][0]
+        income = df_local_income['local_differential_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveFittedDifferential()& 'subject_id = '+str(subject_id))
     elif model == 'fitted fractional':
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataFitted()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_fractional_income'][0]
         income_choice = df_local_income['choice_local_fractional_income'][0]
-        income = df_local_income['local_fractional_income'][0]
+        income = df_local_income['local_fractional_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveFittedFractional()& 'subject_id = '+str(subject_id))
     elif model == 'boxcar differential':
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataBoxCar()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_differential_income'][0]
         income_choice = df_local_income['choice_local_differential_income'][0]
-        income = df_local_income['local_differential_income'][0]
+        income = df_local_income['local_differential_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveBoxCarDifferential()& 'subject_id = '+str(subject_id))
     elif model == 'boxcar fractional':
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataBoxCar()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
         income_trialnum = df_local_income['trialnum_local_fractional_income'][0]
         income_choice = df_local_income['choice_local_fractional_income'][0]
-        income = df_local_income['local_fractional_income'][0]
+        income = df_local_income['local_fractional_income_right'][0]
         df_sigmoid = pd.DataFrame(behavioranal.SubjectPsychometricCurveBoxCarFractional()& 'subject_id = '+str(subject_id))
     else:
         print('model not understood')
@@ -707,7 +709,7 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
         pass
             
     ax4 = fig.add_axes([0,-4,.8,.8])
-    ax4.hist(np.asarray(np.diff(df_behaviortrial['trial_start_time'].values),dtype = 'float'))
+    ax4.hist(np.asarray(np.diff(df_behaviortrial['trial_start_time'].values),dtype = 'float'),20)
     ax4.set_xlabel('ITI (s)')
     ax4.set_ylabel('count')
     ax4.set_title('ITI distribution')
