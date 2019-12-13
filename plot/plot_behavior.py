@@ -468,21 +468,18 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4, model = 'fitted
     ax4.set_ylabel('Relative value')
     ax4.set_title('Filter for local reward rate')
  #%%   
-def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differential', choice_filter = np.ones(5), local_filter = np.ones(10), RT_filter = np.ones(10), fit = 'not_specified'):
+def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differential', choice_filter = np.ones(10), local_filter = np.ones(10), RT_filter = np.ones(10), fit = 'not_specified'):
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    #%
-# =============================================================================
-#     wr_name = 'W-St-L-Rnd'
-#     session = 'last'
-#     model = 'fitted fractional'
-#     choice_filter = np.ones(5)
-#     local_filter = np.ones(10)
-#     RT_filter = np.ones(10)
-#     fit = 'not_specified'
-# =============================================================================
-    
-    
-    
+#%%
+
+    wr_name = 'FOR09'
+    session = 'last'
+    model = 'fitted fractional'
+    choice_filter = np.ones(20)
+    local_filter = np.ones(10)
+    RT_filter = np.ones(10)
+    fit = 'not_specified'
+
     choice_filter = np.asarray(choice_filter)/sum(choice_filter)
     
     local_filter = np.asarray(local_filter)/sum(local_filter)
@@ -499,8 +496,13 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
             df_reactiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
     else:
         df_behaviortrial = pd.DataFrame(((experiment.BehaviorTrial() & 'subject_id = '+str(subject_id) & 'session = '+str(session)) * experiment.SessionTrial() * experiment.SessionBlock()* behavioranal.TrialReactionTime).fetch())
-        df_reactiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
+        df_reactiontimestiontimes = pd.DataFrame((behavioranal.TrialReactionTime() & 'subject_id = '+str(subject_id) & 'session = '+str(session))*behavioranal.TrialLickBoutLenght()*experiment.BehaviorTrial())
     
+    if (behavioranal.SessionTrainingType() & 'subject_id = ' + str(subject_id) & 'session = ' + str(session)).fetch('session_task_protocol')[0] == 100: #2 lickport
+        plottype = '2lickport'
+    else:
+        plottype = '3lickport'
+ 
     df_behaviortrial = merge_dataframes_with_nans(df_behaviortrial,df_reactiontimes,'trial')
     if model == 'fitted differential':
         df_local_income = pd.DataFrame(behavioranal.SessionPsychometricDataFitted()& 'subject_id = '+str(subject_id) & 'session = '+str(session))
@@ -538,17 +540,35 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
     #%
     df_session=pd.DataFrame(experiment.Session() & 'session = '+str(session) & 'subject_id = '+str(subject_id))
     df_behaviortrial['trial_choice_plot'] = np.nan
-    #df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='left']=0
     df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'left', 'trial_choice_plot'] = 0
-    #df_behaviortrial['trial_choice_plot'][df_behaviortrial['trial_choice']=='right']=1
     df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'right', 'trial_choice_plot'] = 1
+    df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'middle', 'trial_choice_plot'] = .5
+    
+    
+    
     trial_choice_plot_interpolated = df_behaviortrial['trial_choice_plot'].values
     nans, x= np.isnan(trial_choice_plot_interpolated), lambda z: z.nonzero()[0]
     trial_choice_plot_interpolated[nans]= np.interp(x(nans), x(~nans), trial_choice_plot_interpolated[~nans])
     bias = np.convolve(trial_choice_plot_interpolated,choice_filter,mode = 'valid')
     bias = np.concatenate((np.nan*np.ones(int(np.floor((len(choice_filter)-1)/2))),bias,np.nan*np.ones(int(np.ceil((len(choice_filter)-1)/2)))))
-    
-    df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
+    if plottype == '2lickport':
+        df_behaviortrial['reward_ratio']=df_behaviortrial['p_reward_right']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left'])
+    elif plottype == '3lickport':
+        df_behaviortrial['reward_ratio_1']=df_behaviortrial['p_reward_left']/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left']+ df_behaviortrial['p_reward_middle'])
+        df_behaviortrial['reward_ratio_2']=(df_behaviortrial['p_reward_left']+df_behaviortrial['p_reward_middle'])/(df_behaviortrial['p_reward_right']+df_behaviortrial['p_reward_left']+ df_behaviortrial['p_reward_middle'])
+        #%
+        leftchoices_filtered = np.convolve(df_behaviortrial['trial_choice'] == 'left',choice_filter,mode = 'valid')
+        leftchoices_filtered = np.concatenate((np.nan*np.ones(int(np.floor((len(choice_filter)-1)/2))),leftchoices_filtered ,np.nan*np.ones(int(np.ceil((len(choice_filter)-1)/2)))))
+        rightchoices_filtered = np.convolve(df_behaviortrial['trial_choice'] == 'right',choice_filter,mode = 'valid')
+        rightchoices_filtered = np.concatenate((np.nan*np.ones(int(np.floor((len(choice_filter)-1)/2))),rightchoices_filtered ,np.nan*np.ones(int(np.ceil((len(choice_filter)-1)/2)))))
+        middlechoices_filtered = np.convolve(df_behaviortrial['trial_choice'] == 'middle',choice_filter,mode = 'valid')
+        middlechoices_filtered = np.concatenate((np.nan*np.ones(int(np.floor((len(choice_filter)-1)/2))),middlechoices_filtered ,np.nan*np.ones(int(np.ceil((len(choice_filter)-1)/2)))))
+        allchoices_filtered = np.convolve(df_behaviortrial['trial_choice'] != 'none',choice_filter,mode = 'valid')
+        allchoices_filtered = np.concatenate((np.nan*np.ones(int(np.floor((len(choice_filter)-1)/2))),allchoices_filtered ,np.nan*np.ones(int(np.ceil((len(choice_filter)-1)/2)))))
+        
+        #%
+        
+        
     
     rewarded = (df_behaviortrial['outcome']=='hit')
     unrewarded = (df_behaviortrial['outcome']=='miss')
@@ -568,24 +588,38 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
 
     fig=plt.figure()
     ax1=fig.add_axes([0,0,2,1])
-    ax1.plot(df_behaviortrial['trial'][rewarded],df_behaviortrial['trial_choice_plot'][rewarded],'k|',color='black',markersize=30,markeredgewidth=2)
-    ax1.plot(df_behaviortrial['trial'][unrewarded],df_behaviortrial['trial_choice_plot'][unrewarded],'|',color='gray',markersize=15,markeredgewidth=2)
-    ax1.plot(df_behaviortrial['trial'],bias,'k-',label = 'choice')
+    
     
 # =============================================================================
 #     ax1.plot(df_behaviortrial['trial'],rewardratio_combined,'g-',label = 'local reward rate')
 # =============================================================================
-    ax1.plot(income_trialnum,prediction,'g-',label = 'model prediction')
     
-    ax1.plot(df_behaviortrial['trial'],df_behaviortrial['reward_ratio'],'y-')
-    ax1.set_yticks((0,1))
-    ax1.set_yticklabels(('left','right'))
+    if plottype == '2lickport':
+        ax1.plot(df_behaviortrial['trial'][rewarded],df_behaviortrial['trial_choice_plot'][rewarded],'k|',color='black',markersize=30,markeredgewidth=2)
+        ax1.plot(df_behaviortrial['trial'][unrewarded],df_behaviortrial['trial_choice_plot'][unrewarded],'|',color='gray',markersize=15,markeredgewidth=2)
+        ax1.plot(df_behaviortrial['trial'],bias,'k-',label = 'choice')
+        ax1.plot(income_trialnum,prediction,'g-',label = 'model prediction')
+        ax1.plot(df_behaviortrial['trial'],df_behaviortrial['reward_ratio'],'y-')
+        ax1.set_yticks((0,1))
+        ax1.set_yticklabels(('left','right'))
+    elif plottype == '3lickport':
+        ax1.stackplot(df_behaviortrial['trial'],  leftchoices_filtered/allchoices_filtered ,  middlechoices_filtered/allchoices_filtered ,  rightchoices_filtered/allchoices_filtered ,colors=['r','g','b'], alpha=0.3 )
+        ax1.plot(df_behaviortrial['trial'][rewarded],df_behaviortrial['trial_choice_plot'][rewarded],'k|',color='black',markersize=30,markeredgewidth=2)
+        ax1.plot(df_behaviortrial['trial'][unrewarded],df_behaviortrial['trial_choice_plot'][unrewarded],'|',color='gray',markersize=15,markeredgewidth=2)
+        ax1.plot(df_behaviortrial['trial'],df_behaviortrial['reward_ratio_1'],'y-')
+        ax1.plot(df_behaviortrial['trial'],df_behaviortrial['reward_ratio_2'],'y-')
+        ax1.set_yticks((0,.5,1))
+        ax1.set_yticklabels(('left','middle','right'))
+        ax1.set_ylim([-.1,1.1])
+    
     ax1.set_title(wr_name + '   -   session: ' + str(session) + ' - '+str(df_session['session_date'][0]))
     ax1.legend(fontsize='small',loc = 'upper right')
     
     ax2=fig.add_axes([0,-1,2,.8])
     ax2.plot(df_behaviortrial['trial'],df_behaviortrial['p_reward_left'],'r-')
     ax2.plot(df_behaviortrial['trial'],df_behaviortrial['p_reward_right'],'b-')
+    if plottype == '3lickport':
+        ax2.plot(df_behaviortrial['trial'],df_behaviortrial['p_reward_middle'],'g-')
     ax2.set_ylabel('Reward probability')
     ax2.set_xlabel('Trial #')
     ax2.legend(['left','right'],fontsize='small',loc = 'upper right')
@@ -689,7 +723,9 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
 #     ax4=fig.add_axes([0,-3,1,.8])                   
 #     ax4.plot(rewardratio_R / rewardratio_sum,bias,'ko')        
 # =============================================================================
-    plot_local_psychometric_curve(wr_name = wr_name ,session = session, model=model)
+    if plottype == '2lickport':
+        plot_local_psychometric_curve(wr_name = wr_name ,session = session, model=model)
+        
     
 #ax1.set_xlim(00, 600)
 #ax2.set_xlim(00, 600)
@@ -704,8 +740,9 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
 #     max_bias = .5
 #     bootstrapnum = 100
 #     only_blocks_above_median = False
+#     only_blocks_above_mean = False,
+#     only_blocks_below_mean = False
 # =============================================================================
-    
     allslopes = list()
     meanslopes = list()
     slopes_ci = list()
@@ -807,3 +844,111 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
         meanslopes.append(np.mean(slopes))
         slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
     return metricnames, meanslopes, slopes_ci, allslopes
+
+
+
+def plot_tuning_curve_change_during_block(wr_name = 'FOR02',minsession = 8,mintrialnum = 20,max_bias = .5,bootstrapnum = 100):# TODO: FINISH this one
+    #%%
+    wr_name = 'FOR01'
+    minsession = 8
+    mintrialnum = 30
+    max_bias = .5
+    bootstrapnum = 100
+    allslopes = list()
+    meanslopes = list()
+    slopes_ci = list()
+    
+    
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {
+           'subject_id':subject_id,
+           #'session': session
+           }
+    df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockStats()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()*behavioranal.SessionBias()) & key )
+    #%
+    
+    #%
+    df_choice_reward_rate['biasval'] = np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
+    
+    df_choice_reward_rate['block_relative_value']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+    df_choice_reward_rate['total_reward_rate']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
+    needed = (df_choice_reward_rate['total_reward_rate']<= 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias)
+    df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
+    
+    
+    rewardratios = np.stack(df_choice_reward_rate.block_reward_ratios_incremental.values)
+    choiceratios = np.stack(df_choice_reward_rate.block_choice_ratios_incremental.values)
+    
+    #%%
+    
+    fig=plt.figure()
+    
+    ax_blocklenght=fig.add_axes([0,1,1,.8])
+    out = ax_blocklenght.hist(df_choice_reward_rate['block_length'],30)
+    ax_blocklenght.set_xlabel('Block length (trials)')
+    ax_blocklenght.set_ylabel('Count')
+    ax_blocklenght.set_title(wr_name)
+    for idx,(metricname,metricname_x) in enumerate(zip(metricnames,metricnames_xaxes)):#for idx,metricname in enumerate(metricnames):
+        relvals = np.sort(df_choice_reward_rate['block_relative_value'].unique())
+        choice_ratio_mean = list()
+        choice_ratio_sd = list()
+        choice_ratio_median = list()
+        reward_rate_value = list()
+        for relval in relvals:
+            choice_rate_vals = df_choice_reward_rate[metricname][df_choice_reward_rate['block_relative_value']==relval]
+            choice_ratio_mean.append(choice_rate_vals.mean())
+            choice_ratio_median.append(choice_rate_vals.median())
+            choice_ratio_sd.append(float(np.std(choice_rate_vals.to_numpy())))
+            reward_rate_value.append(float(relval))
+
+        ax_1=fig.add_axes([1,-idx,.8,.8])
+        #ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+        ax_1.plot(df_choice_reward_rate[metricname_x],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+        ax_1.plot([0,1],[0,1],'k-')
+        ax_1.set_ylim([0, 1])
+        ax_1.set_xlim([0, 1])
+        ax_1.set_xlabel('actual relative value (r_R/(r_R+r_L))')
+        ax_1.set_ylabel('relative choice (c_R/(c_R+c_L))')
+        ax_1.set_title(metricname)
+       
+        ax_2=fig.add_axes([0,-idx,.8,.8])
+        ax_2.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+        ax_2.plot(df_choice_reward_rate['block_relative_value'],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+        ax_2.plot([0,1],[0,1],'k-')
+        ax_2.set_ylim([0, 1])
+        ax_2.set_xlim([0, 1])
+        ax_2.set_xlabel('relative value (p_R/(p_R+p_L))')
+        ax_2.set_ylabel('relative choice (c_R/(c_R+c_L))')
+        ax_2.set_title(metricname)
+        #%
+        ax_3=fig.add_axes([2,-idx,.8,.8])
+        #%
+        xvals = np.asarray(df_choice_reward_rate[metricname_x],dtype = 'float')
+        yvals = np.asarray(df_choice_reward_rate[metricname],dtype = 'float')
+        todel = (xvals ==1) | (yvals == 1)  | (xvals ==0) | (yvals == 0)
+        xvals = xvals[todel==False]
+        yvals = yvals[todel==False]
+        xvals = xvals/(1-xvals)
+        yvals = yvals /(1-yvals)
+        #%
+        
+        xvals = np.log2(xvals)
+        yvals = np.log2(yvals)
+        todel = (np.isinf(xvals) | np.isinf(yvals)) | (yvals ==0) | (xvals ==0) | (np.isnan(xvals) | np.isnan(yvals))
+        xvals = xvals[todel==False]
+        yvals = yvals[todel==False]
+        slopes, intercepts = draw_bs_pairs_linreg(xvals, yvals, size=bootstrapnum)
+        p = np.polyfit(xvals,yvals,1)
+        #%
+        ax_3.plot(xvals,yvals,'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+        ax_3.plot([-3,3],[-3,3],'k-')
+        ax_3.plot([-3,3],np.polyval(p,[-3,3]),'r-',linewidth = 3)
+        for i in range(bootstrapnum):
+            ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color='red')
+        ax_3.set_xlabel('log reward rate log(r_R/r_L)')
+        ax_3.set_ylabel('log choice rate log(c_R/c_L)')
+        ax_3.set_title('slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5)))
+        allslopes.append(slopes)
+        meanslopes.append(np.mean(slopes))
+        slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
+    #return metricnames, meanslopes, slopes_ci, allslopes
