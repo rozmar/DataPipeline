@@ -253,6 +253,87 @@ def plotregressionaverage(wr_name = None, sessions = None):
     ax2.set_title('Choices - subject: ' + wr_name + ' - sessions: ' + session_name)
     ax2.set_ylim([-.5, 1.5])
     
+
+def plot_regression_coefficients_3lp(plottype = 'NRC'):
+    trialstoshow = 15
+    #trialstofit = 15
+    df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session()* experiment.SessionDetails())
+    subject_names = df_subject_wr['water_restriction_number'].unique()
+    subject_names.sort()
+    
+    
+    if plottype == 'RNRC':
+        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNRC())
+    elif plottype == 'RNR':
+        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNR())
+    elif plottype == 'RC':
+        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRC())    
+    elif plottype == 'NRC':
+        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNRC())    
+    elif plottype == 'R':
+        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpR())    
+    elif plottype == 'NR':
+        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNR())    
+    elif plottype == 'C':
+        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpC())    
+    
+    fig=plt.figure()
+    axs = list()
+    for directionidx,direction in enumerate(['right','left','middle']):
+        xoffset = 0
+        if plottype[0] == 'R':
+            ax1=fig.add_axes([0,-directionidx,1,.8])  
+            xoffset+=1.2
+        if 'NR' in plottype:
+            ax2=fig.add_axes([xoffset,-directionidx,1,.8]) 
+            xoffset+=1.2
+        if 'C' in plottype:
+            ax3=fig.add_axes([xoffset,-directionidx,1,.8])
+    
+        subject_names_legend = list()
+        for wr_name in subject_names:
+            subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+            idx = df_coeff['subject_id']==subject_id
+            if sum(idx) == 1:
+                if plottype[0] == 'R':
+                    ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+'_'+direction][idx].values[0])
+                if 'NR' in plottype:    
+                    ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+'_'+direction][idx].values[0])
+                if 'C' in plottype:    
+                    ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+'_'+direction].mean())+1),df_coeff['coefficients_choices_subject'+'_'+direction][idx].values[0])
+                subject_names_legend.append(wr_name)
+        ax = dict()
+        if plottype[0] == 'R':
+            ax1.set_xlabel('Choices back')
+            ax1.set_ylabel('Coeff')
+            ax1.set_title('Rewarded trials'+' - '+direction)
+            ax1.legend(subject_names,fontsize='small',loc = 'upper right')
+            ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+'_'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax1.plot([0,len(df_coeff['coefficients_rewards_subject'+'_'+direction].mean())],[0,0],'k-')
+            ax1.set_xlim([0, trialstoshow])
+            ax['ax1'] = ax1
+        
+        if 'NR' in plottype: 
+            ax2.set_xlabel('Choices back')
+            ax2.set_ylabel('Coeff')
+            ax2.set_title('Unrewarded trials'+' - '+direction)
+            ax2.legend(subject_names_legend,fontsize='small',loc = 'upper right')
+            ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+'_'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax2.plot([0,len(df_coeff['coefficients_nonrewards_subject'+'_'+direction].mean())],[0,0],'k-')
+            ax2.set_xlim([0, trialstoshow])
+            ax['ax2'] = ax2
+        if 'C' in plottype:
+            ax3.set_xlabel('Choices back')
+            ax3.set_ylabel('Coeff')
+            ax3.set_title('Choices'+' - '+direction)
+            ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+'_'+direction].mean())+1),df_coeff['coefficients_choices_subject'+'_'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax3.plot([0,len(df_coeff['coefficients_choices_subject'+'_'+direction].mean())],[0,0],'k-')
+            ax3.set_xlim([0, trialstoshow])
+            ax['ax3'] = ax3
+    
+        axs.append(ax)
+
+
     
 def plot_reward_rate(wr_name):
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
@@ -736,11 +817,11 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
 def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum = 20,max_bias = .5,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False):
     #%%
 # =============================================================================
-#     wr_name = 'FOR01'
+#     wr_name = 'FOR12'
 #     minsession = 8
 #     mintrialnum = 30
-#     max_bias = .5
-#     bootstrapnum = 100
+#     max_bias = .9
+#     bootstrapnum = 50
 #     only_blocks_above_median = False
 #     only_blocks_above_mean = False,
 #     only_blocks_below_mean = False
@@ -748,22 +829,23 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
     allslopes = list()
     meanslopes = list()
     slopes_ci = list()
-    metricnames = ['block_choice_ratio','block_choice_ratio_first_tertile','block_choice_ratio_second_tertile','block_choice_ratio_third_tertile']
-    metricnames_xaxes = ['block_reward_ratio_differential','block_reward_ratio_first_tertile_differential','block_reward_ratio_second_tertile_differential','block_reward_ratio_third_tertile_differential']
+    metricnames = ['block_choice_ratio_right','block_choice_ratio_first_tertile_right','block_choice_ratio_second_tertile_right','block_choice_ratio_third_tertile_right']
+    metricnames_xaxes = ['block_reward_ratio_right','block_reward_ratio_first_tertile_right','block_reward_ratio_second_tertile_right','block_reward_ratio_third_tertile_right']
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     key = {
            'subject_id':subject_id,
            #'session': session
            }
-    df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockStats()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()*behavioranal.SessionBias()) & key )
+    df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockStats()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()*behavioranal.SessionBias()*behavioranal.SessionTrainingType()) & key & 'session_task_protocol = 100')
+    df_choice_reward_rate = df_choice_reward_rate[(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']) >0]
     #%
     
     #%
-    df_choice_reward_rate['biasval'] = np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
+    df_choice_reward_rate['biasval'] =df_choice_reward_rate[['session_bias_choice_left','session_bias_choice_right','session_bias_choice_middle']].T.max()# np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
     
     df_choice_reward_rate['block_relative_value']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
     df_choice_reward_rate['total_reward_rate']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
-    needed = (df_choice_reward_rate['total_reward_rate']<= 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias)
+    needed = (df_choice_reward_rate['total_reward_rate']< 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio_right']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias) 
     df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
     if only_blocks_above_median:
         medianval = df_choice_reward_rate['block_trialnum'].median()
@@ -831,8 +913,14 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
         todel = (np.isinf(xvals) | np.isinf(yvals)) | (yvals ==0) | (xvals ==0) | (np.isnan(xvals) | np.isnan(yvals))
         xvals = xvals[todel==False]
         yvals = yvals[todel==False]
-        slopes, intercepts = draw_bs_pairs_linreg(xvals, yvals, size=bootstrapnum)
-        p = np.polyfit(xvals,yvals,1)
+        try:
+            slopes, intercepts = draw_bs_pairs_linreg(xvals, yvals, size=bootstrapnum)
+            p = np.polyfit(xvals,yvals,1)
+        except:
+            slopes = list()
+            intercepts = list()
+            p = None
+        
         #%
         ax_3.plot(xvals,yvals,'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
         ax_3.plot([-3,3],[-3,3],'k-')
@@ -845,7 +933,129 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
         allslopes.append(slopes)
         meanslopes.append(np.mean(slopes))
         slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
+        #%%
     return metricnames, meanslopes, slopes_ci, allslopes
+
+
+def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession = 8,mintrialnum = 20,max_bias = .9,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False):
+    #%%
+    wr_name = 'FOR01'
+    minsession = 8
+    mintrialnum = 30
+    max_bias = .9
+    bootstrapnum = 50
+    only_blocks_above_median = False
+    only_blocks_above_mean = False,
+    only_blocks_below_mean = False
+    allslopes = list()
+    meanslopes = list()
+    slopes_ci = list()
+    metricnames = ['block_choice_ratio_right','block_choice_ratio_left','block_choice_ratio_middle']
+    metricnames_xaxes = ['block_reward_ratio_right','block_reward_ratio_left','block_reward_ratio_middle']
+    blockvalues_xaxes = ['block_relative_value_right','block_relative_value_left','block_relative_value_middle']
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {
+           'subject_id':subject_id,
+           #'session': session
+           }
+    df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockStats()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()*behavioranal.SessionBias()*behavioranal.SessionTrainingType()) & key & 'session_task_protocol = 101')
+    if len(df_choice_reward_rate)>0:
+        df_choice_reward_rate = df_choice_reward_rate[(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']) >0]
+        #%
+        
+        #%
+        df_choice_reward_rate['biasval'] =df_choice_reward_rate[['session_bias_choice_left','session_bias_choice_right','session_bias_choice_middle']].T.max()# np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
+        
+        df_choice_reward_rate['block_relative_value_right']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
+        df_choice_reward_rate['block_relative_value_left']=df_choice_reward_rate['p_reward_left']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
+        df_choice_reward_rate['block_relative_value_middle']=df_choice_reward_rate['p_reward_middle']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
+        df_choice_reward_rate['total_reward_rate']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
+        needed = (df_choice_reward_rate['total_reward_rate']< 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio_right']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias) 
+        df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
+        if only_blocks_above_median:
+            medianval = df_choice_reward_rate['block_trialnum'].median()
+            df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_trialnum'] >= medianval]
+        elif only_blocks_above_mean:
+            medianval = df_choice_reward_rate['block_trialnum'].mean()
+            df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_trialnum'] >= medianval]
+        elif only_blocks_below_mean:
+            medianval = df_choice_reward_rate['block_trialnum'].mean()
+            df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_trialnum'] <= medianval]
+        #%
+        fig=plt.figure()
+        
+        ax_blocklenght=fig.add_axes([0,1,1,.8])
+        out = ax_blocklenght.hist(df_choice_reward_rate['block_length'],30)
+        ax_blocklenght.set_xlabel('Block length (trials)')
+        ax_blocklenght.set_ylabel('Count')
+        ax_blocklenght.set_title(wr_name)
+        for idx,(metricname,metricname_x,blockvalue) in enumerate(zip(metricnames,metricnames_xaxes,blockvalues_xaxes)):#for idx,metricname in enumerate(metricnames):
+            relvals = np.sort(df_choice_reward_rate[blockvalue].unique())
+            choice_ratio_mean = list()
+            choice_ratio_sd = list()
+            choice_ratio_median = list()
+            reward_rate_value = list()
+            for relval in relvals:
+                choice_rate_vals = df_choice_reward_rate[metricname][df_choice_reward_rate[blockvalue]==relval]
+                choice_ratio_mean.append(choice_rate_vals.mean())
+                choice_ratio_median.append(choice_rate_vals.median())
+                choice_ratio_sd.append(float(np.std(choice_rate_vals.to_numpy())))
+                reward_rate_value.append(float(relval))
+    
+            ax_1=fig.add_axes([1,-idx,.8,.8])
+            #ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+            ax_1.plot(df_choice_reward_rate[metricname_x],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_1.plot([0,1],[0,1],'k-')
+            ax_1.set_ylim([0, 1])
+            ax_1.set_xlim([0, 1])
+            ax_1.set_xlabel('actual relative value (r_R/(r_R+r_L))')
+            ax_1.set_ylabel('relative choice (c_R/(c_R+c_L))')
+            ax_1.set_title(metricname)
+           
+            ax_2=fig.add_axes([0,-idx,.8,.8])
+            ax_2.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
+            ax_2.plot(df_choice_reward_rate[blockvalue],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_2.plot([0,1],[0,1],'k-')
+            ax_2.set_ylim([0, 1])
+            ax_2.set_xlim([0, 1])
+            ax_2.set_xlabel('relative value (p_R/(p_R+p_L))')
+            ax_2.set_ylabel('relative choice (c_R/(c_R+c_L))')
+            ax_2.set_title(metricname)
+            #%
+            ax_3=fig.add_axes([2,-idx,.8,.8])
+            #%
+            xvals = np.asarray(df_choice_reward_rate[metricname_x],dtype = 'float')
+            yvals = np.asarray(df_choice_reward_rate[metricname],dtype = 'float')
+            todel = (xvals ==1) | (yvals == 1)  | (xvals ==0) | (yvals == 0)
+            xvals = xvals[todel==False]
+            yvals = yvals[todel==False]
+            xvals = xvals/(1-xvals)
+            yvals = yvals /(1-yvals)
+            #%
+            
+            xvals = np.log2(xvals)
+            yvals = np.log2(yvals)
+            todel = (np.isinf(xvals) | np.isinf(yvals)) | (yvals ==0) | (xvals ==0) | (np.isnan(xvals) | np.isnan(yvals))
+            xvals = xvals[todel==False]
+            yvals = yvals[todel==False]
+            slopes, intercepts = draw_bs_pairs_linreg(xvals, yvals, size=bootstrapnum)
+            p = np.polyfit(xvals,yvals,1)
+            #%
+            ax_3.plot(xvals,yvals,'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_3.plot([-3,3],[-3,3],'k-')
+            ax_3.plot([-3,3],np.polyval(p,[-3,3]),'r-',linewidth = 3)
+            for i in range(bootstrapnum):
+                ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color='red')
+            ax_3.set_xlabel('log reward rate log(r_R/r_L)')
+            ax_3.set_ylabel('log choice rate log(c_R/c_L)')
+            ax_3.set_title('slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5)))
+            allslopes.append(slopes)
+            meanslopes.append(np.mean(slopes))
+            slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
+            #%%
+        return metricnames, meanslopes, slopes_ci, allslopes
+    else:
+        return metricnames, [], [], []
 
 
 
