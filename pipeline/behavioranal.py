@@ -17,8 +17,10 @@ from sklearn.linear_model import LogisticRegression
 import bootstrapped.bootstrap as bs
 import bootstrapped.stats_functions as bs_stats
 schema = dj.schema(get_schema_name('behavior-anal'),locals())
+
+
 #%%
-logistic_regression_trials_back = 90
+logistic_regression_trials_back = 15
 logistic_regression_first_session = 8
 logistic_regression_max_bias = .9 # 0 = no bias, 1 = full bias
 block_reward_ratio_increment_step = 10
@@ -206,21 +208,22 @@ def logistic_regression_on_trial_history(key, fittype):
         wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
         df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
         if len(df_bias) > 0:
-            df_bias['biasval'] = df_bias.loc[:,['session_bias_choice_right','session_bias_choice_left','session_bias_middle']].T.max()# np.abs(df_bias['session_bias_choice']*2 -1) # TODO the bias was changed!!!!!!!!!!!!
+            df_bias['biasval'] = df_bias.loc[:,['session_bias_choice_right','session_bias_choice_left','session_bias_middle']].T.max()
             sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
             df_behaviortrial_all = None
             for session in sessionsneeded:
-                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial()*experiment.SessionBlock()*SessionStats() & key & 'session =' +str(session)) & 'trial > session_pretraining_trial_num')
                 if type(df_behaviortrial_all) != pd.DataFrame:
                     df_behaviortrial_all  = df_behaviortrial_now
                 else:
                     df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
-            print(key)
+            #print(key)
+            #%%
             if len(df_behaviortrial_all)>0:
                 sessions = np.unique(df_behaviortrial_all['session'])
                 for session in sessions:
                     if session >= first_session:
-                        df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                        df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]#TODO remove pretraining trials
                         idx = np.argsort(df_behaviortrial['trial'])
                         choices = df_behaviortrial['trial_choice'].values[idx]
                         choices_digitized = np.zeros(len(choices))
@@ -299,7 +302,118 @@ def logistic_regression_on_trial_history(key, fittype):
                 else:
                     return None
                     print('not enough data for' + wrnumber +' in '+ fittype)
-                    
+
+def logistic_regression_on_trial_history_3lp(key, fittype):
+#%%
+    trials_back = logistic_regression_trials_back 
+    first_session = logistic_regression_first_session
+    max_bias = logistic_regression_max_bias
+    if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
+        wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
+        df_bias = pd.DataFrame(SessionBias()*SessionTrainingType() & key & 'session >' +str(first_session-1) & 'session_task_protocol = 101')
+        if len(df_bias) > 0:
+            df_bias['biasval'] = df_bias.loc[:,['session_bias_choice_right','session_bias_choice_left','session_bias_middle']].T.max()
+            sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
+            df_behaviortrial_all = None
+            for session in sessionsneeded:
+                df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial()*experiment.SessionBlock()*SessionStats() & key & 'session =' +str(session) & 'trial > session_pretraining_trial_num'))
+                if type(df_behaviortrial_all) != pd.DataFrame:
+                    df_behaviortrial_all  = df_behaviortrial_now
+                else:
+                    df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
+            #print(key)
+            #%
+            if len(df_behaviortrial_all)>0:
+                for direction in ['left','right','middle']:
+                    label = list()
+                    data = list()
+                    sessions = np.unique(df_behaviortrial_all['session'])
+                    for session in sessions:
+                        if session >= first_session:
+                            df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                            idx = np.argsort(df_behaviortrial['trial'])
+                            outcomes = df_behaviortrial['outcome'].values[idx]
+                            choices = df_behaviortrial['trial_choice'].values[idx]
+                            choices_digitized = np.zeros(len(choices))
+                            choices_digitized[choices == direction]=1
+                            choices_digitized[(choices != direction) & (outcomes != 'ignore')]=-1
+                            rewards_digitized = choices_digitized.copy()
+                            rewards_digitized[outcomes=='miss']=0
+                            non_rewards_digitized = choices_digitized.copy()
+                            non_rewards_digitized[outcomes=='hit']=0
+                            for trial in range(trials_back,len(rewards_digitized)):
+                                if choices_digitized[trial] != 0:
+                                    label.append(choices_digitized[trial])
+                                    if fittype == 'RNRC':
+                                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
+                                    elif fittype == 'RC':
+                                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+                                    elif fittype == 'NRC':
+                                        data.append(np.concatenate([non_rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+                                    elif fittype == 'RNR':
+                                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
+                                    elif fittype == 'R':
+                                        data.append(rewards_digitized[trial-trials_back:trial])
+                                    elif fittype == 'NR':
+                                        data.append(non_rewards_digitized[trial-trials_back:trial])
+                                    elif fittype == 'C':
+                                        data.append(choices_digitized[trial-trials_back:trial])
+                                    else:
+                                        print('unidentified fittype.. ERROR')
+                                        
+                    label = np.array(label)
+                    data = np.matrix(data)
+                    if len(data) > 1:
+                        x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                        logisticRegr = LogisticRegression(solver = 'lbfgs')
+                        logisticRegr.fit(x_train, y_train)
+                        #predictions = logisticRegr.predict(x_test)
+                        score = logisticRegr.score(x_test, y_test)        
+                        coefficients = logisticRegr.coef_
+                        coefficients = coefficients[0]
+                        if fittype == 'RNRC':
+                            coeff_rewards = coefficients[trials_back-1::-1]
+                            coeff_choices = coefficients[-trials_back-1:trials_back-1:-1]
+                            coeff_nonrewards = coefficients[-1:-trials_back-1:-1]
+                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
+                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
+                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
+                        elif fittype == 'RC':
+                            coeff_rewards = coefficients[trials_back-1::-1]
+                            coeff_choices = coefficients[-1:trials_back-1:-1]
+                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
+                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
+                        elif fittype == 'NRC':
+                            coeff_nonrewards = coefficients[trials_back-1::-1]
+                            coeff_choices = coefficients[-1:trials_back-1:-1]
+                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
+                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
+                        elif fittype == 'RNR':
+                            coeff_rewards = coefficients[trials_back-1::-1]
+                            coeff_nonrewards = coefficients[-1:trials_back-1:-1]
+                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
+                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
+                        elif fittype == 'R':
+                            coeff_rewards = coefficients[::-1]
+                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
+                        elif fittype == 'NR':
+                            coeff_nonrewards = coefficients[::-1]
+                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
+                        elif fittype == 'C':
+                            coeff_choices = coefficients[::-1]
+                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
+                        key['score_subject'+'_'+direction] = score
+                    else:
+                        print('not enough data for' + wrnumber +' in '+ fittype)                    
+                        return None
+                        
+                        #%%
+                print(wrnumber + ' coefficients fitted for ' + fittype)
+                return key
+            else:
+                print('not enough data for' + wrnumber +' in '+ fittype)                    
+                return None
+                
 
 #%%
 def logistic_regression_on_trial_history_convolved(key, fittype):
@@ -341,7 +455,7 @@ def logistic_regression_on_trial_history_convolved(key, fittype):
                         choices_conv = np.zeros([len(filter_time_constants),len(choices_digitized)])
                         rewards_conv = np.zeros([len(filter_time_constants),len(choices_digitized)])
                         non_rewards_conv = np.zeros([len(filter_time_constants),len(choices_digitized)])
-                        print(key)
+                        #print(key)
                         if len(rewards_digitized)>trials_back:
                             for filtidx,filter_tau in enumerate(filter_time_constants):
                                 choices_conv[filtidx,:] = np.convolve(np.exp(-np.arange(0,trials_back)/filter_tau)[::-1],choices_digitized,mode = 'same')
@@ -491,8 +605,13 @@ class SessionStats(dj.Computed):
     session_ignores : int #number of ignores
     session_autowaters : int #number of autowaters
     session_length : decimal(10, 4) #length of the session in seconds
+    session_pretraining_trial_num = null: int #number of pretraining trials
+    session_1st_3_ignores = null : int #trialnum where the first three ignores happened in a row
+    session_1st_2_ignores = null : int #trialnum where the first three ignores happened in a row
+    session_1st_ignore = null : int #trialnum where the first ignore happened    
     """
     def make(self, key):
+        #%%
         keytoadd = key
         keytoadd['session_trialnum'] = len(experiment.SessionTrial()&key)
         keytoadd['session_blocknum'] = len(experiment.SessionBlock()&key)
@@ -504,6 +623,22 @@ class SessionStats(dj.Computed):
             keytoadd['session_length'] = float(((experiment.SessionTrial() & key).fetch('trial_stop_time')).max())
         else:
             keytoadd['session_length'] = 0
+        df_choices = pd.DataFrame((experiment.BehaviorTrial()*experiment.SessionBlock()) & key)
+        if len(df_choices)>0:
+            realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
+            if not realtraining.values.any():
+                keytoadd['session_pretraining_trial_num'] = keytoadd['session_trialnum']
+                print('all pretraining')
+            else:
+                keytoadd['session_pretraining_trial_num'] = realtraining.values.argmax()
+                print(str(realtraining.values.argmax())+' out of '+str(keytoadd['session_trialnum']))
+            if (df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values.any():
+                keytoadd['session_1st_ignore'] = (df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values.argmax()+keytoadd['session_pretraining_trial_num']+1
+                if (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==3).any:
+                    keytoadd['session_1st_2_ignores'] = (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==2).argmax()
+                if (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==3).any:
+                    keytoadd['session_1st_3_ignores'] = (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==3).argmax()
+       
         self.insert1(keytoadd,skip_duplicates=True)
         
 @schema
@@ -512,10 +647,16 @@ class BlockStats(dj.Computed):
     -> experiment.SessionBlock
     ---
     block_trialnum : int #number of trials in block
+    block_ignores : int #number of ignores
+    block_reward_rate: decimal(8,4) # miss = 0, hit = 1
     """
     def make(self, key):
-        key['block_trialnum'] = len((experiment.BehaviorTrial() & key))
-        self.insert1(key,skip_duplicates=True)
+        keytoinsert = key
+        keytoinsert['block_trialnum'] = len((experiment.BehaviorTrial() & key))
+        keytoinsert['block_ignores'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
+        keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"'))/keytoinsert['block_trialnum']
+        #%%
+        self.insert1(keytoinsert,skip_duplicates=True)
         
 @schema
 class SessionReactionTimeHistogram(dj.Computed):
@@ -867,25 +1008,27 @@ class BlockChoiceRatio(dj.Computed):
     definition = """ # value between 0 and 1 for left and 1 right choices, averaged over the whole block or a fraction of the block
     -> experiment.SessionBlock
     ---
-    block_choice_ratio_right : decimal(8,4) # 0 = rest, 1 = right
-    block_choice_ratio_first_tertile_right : decimal(8,4) # 0 = rest, 1 = right
-    block_choice_ratio_second_tertile_right : decimal(8,4) # 0 = rest, 1 = right
-    block_choice_ratio_third_tertile_right : decimal(8,4) # 0 = rest, 1 = right
-    block_choice_ratios_incremental_right : longblob
+    block_choice_ratio_right = null : decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratio_first_tertile_right = null: decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratio_second_tertile_right = null : decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratio_third_tertile_right = null : decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratios_incremental_right = null: longblob
     
-    block_choice_ratio_left : decimal(8,4) # 0 = rest, 1 = left
-    block_choice_ratio_first_tertile_left : decimal(8,4) # 0 = rest, 1 = left
-    block_choice_ratio_second_tertile_left : decimal(8,4) # 0 = rest, 1 = left
-    block_choice_ratio_third_tertile_left : decimal(8,4) # 0 = rest, 1 = left
-    block_choice_ratios_incremental_left : longblob
+    block_choice_ratio_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratio_first_tertile_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratio_second_tertile_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratio_third_tertile_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratios_incremental_left = null: longblob
     
-    block_choice_ratio_middle : decimal(8,4) # 0 = rest, 1 = middle
-    block_choice_ratio_first_tertile_middle : decimal(8,4) # 0 = rest, 1 = middle
-    block_choice_ratio_second_tertile_middle : decimal(8,4) # 0 = rest, 1 = middle
-    block_choice_ratio_third_tertile_middle : decimal(8,4) # 0 = rest, 1 = middle
-    block_choice_ratios_incremental_middle : longblob
+    block_choice_ratio_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratio_first_tertile_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratio_second_tertile_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratio_third_tertile_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratios_incremental_middle = null: longblob
     """    
     def make(self, key):
+        #%%
+       # warnings.filterwarnings("error")
         block_reward_ratio_window_starts = np.arange(block_reward_ratio_increment_window/2,block_reward_ratio_increment_max,block_reward_ratio_increment_step,dtype = int)-int(round(block_reward_ratio_increment_window/2))
         block_reward_ratio_window_ends = np.arange(block_reward_ratio_increment_window/2,block_reward_ratio_increment_max,block_reward_ratio_increment_step,dtype = int)+int(round(block_reward_ratio_increment_window/2))
         block_choice_ratios_incremental_right=np.ones(len(block_reward_ratio_window_ends))*np.nan
@@ -900,35 +1043,43 @@ class BlockChoiceRatio(dj.Computed):
         df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'right'),'choice_R']=1
         df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'middle'),'choice_M']=1
         trialnum = len(df_behaviortrial)
-        key['block_choice_ratio_right'] = -1
-        key['block_choice_ratio_first_tertile_right'] = -1
-        key['block_choice_ratio_second_tertile_right'] = -1
-        key['block_choice_ratio_third_tertile_right'] = -1
-        key['block_choice_ratios_incremental_right']=block_choice_ratios_incremental_right
-        key['block_choice_ratio_left'] = -1
-        key['block_choice_ratio_first_tertile_left'] = -1
-        key['block_choice_ratio_second_tertile_left'] = -1
-        key['block_choice_ratio_third_tertile_left'] = -1
-        key['block_choice_ratios_incremental_left']=block_choice_ratios_incremental_left
-        key['block_choice_ratio_middle'] = -1
-        key['block_choice_ratio_first_tertile_middle'] = -1
-        key['block_choice_ratio_second_tertile_middle'] = -1
-        key['block_choice_ratio_third_tertile_middle'] = -1
-        key['block_choice_ratios_incremental_middle']=block_choice_ratios_incremental_middle
+# =============================================================================
+#         key['block_choice_ratio_right'] = -1
+#         key['block_choice_ratio_first_tertile_right'] = -1
+#         key['block_choice_ratio_second_tertile_right'] = -1
+#         key['block_choice_ratio_third_tertile_right'] = -1
+#         key['block_choice_ratios_incremental_right']=block_choice_ratios_incremental_right
+#         key['block_choice_ratio_left'] = -1
+#         key['block_choice_ratio_first_tertile_left'] = -1
+#         key['block_choice_ratio_second_tertile_left'] = -1
+#         key['block_choice_ratio_third_tertile_left'] = -1
+#         key['block_choice_ratios_incremental_left']=block_choice_ratios_incremental_left
+#         key['block_choice_ratio_middle'] = -1
+#         key['block_choice_ratio_first_tertile_middle'] = -1
+#         key['block_choice_ratio_second_tertile_middle'] = -1
+#         key['block_choice_ratio_third_tertile_middle'] = -1
+#         key['block_choice_ratios_incremental_middle']=block_choice_ratios_incremental_middle
+# =============================================================================
         if trialnum >15:
             tertilelength = int(np.floor(trialnum /3))
-            key['block_choice_ratio_right'] = df_behaviortrial.choice_R.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
-            key['block_choice_ratio_first_tertile_right'] = df_behaviortrial.choice_R[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
-            key['block_choice_ratio_second_tertile_right'] = df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
-            key['block_choice_ratio_third_tertile_right'] = df_behaviortrial.choice_R[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
-            key['block_choice_ratio_left'] = df_behaviortrial.choice_L.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
-            key['block_choice_ratio_first_tertile_left'] = df_behaviortrial.choice_L[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
-            key['block_choice_ratio_second_tertile_left'] = df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
-            key['block_choice_ratio_third_tertile_left'] = df_behaviortrial.choice_L[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
-            key['block_choice_ratio_middle'] = df_behaviortrial.choice_M.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
-            key['block_choice_ratio_first_tertile_middle'] = df_behaviortrial.choice_M[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
-            key['block_choice_ratio_second_tertile_middle'] = df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
-            key['block_choice_ratio_third_tertile_middle'] = df_behaviortrial.choice_M[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
+#%%
+            if df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum()>0:
+                key['block_choice_ratio_right'] = df_behaviortrial.choice_R.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
+                key['block_choice_ratio_left'] = df_behaviortrial.choice_L.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
+                key['block_choice_ratio_middle'] = df_behaviortrial.choice_M.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
+                
+                if (df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())>0:
+                    key['block_choice_ratio_first_tertile_right'] = df_behaviortrial.choice_R[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
+                    key['block_choice_ratio_first_tertile_left'] = df_behaviortrial.choice_L[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
+                    key['block_choice_ratio_first_tertile_middle'] = df_behaviortrial.choice_M[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
+                if (df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())>0:
+                    key['block_choice_ratio_second_tertile_right'] = df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
+                    key['block_choice_ratio_second_tertile_left'] = df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
+                    key['block_choice_ratio_second_tertile_middle'] = df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
+                if (df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())>0:
+                    key['block_choice_ratio_third_tertile_right'] = df_behaviortrial.choice_R[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
+                    key['block_choice_ratio_third_tertile_left'] = df_behaviortrial.choice_L[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
+                    key['block_choice_ratio_third_tertile_middle'] = df_behaviortrial.choice_M[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
             for i,(t_start,t_end) in enumerate(zip(block_reward_ratio_window_starts,block_reward_ratio_window_ends)):
                 if trialnum >= t_end:
                     block_choice_ratios_incremental_right[i] = df_behaviortrial.choice_R[t_start:t_end].sum()/(df_behaviortrial.choice_L[t_start:t_end].sum()+df_behaviortrial.choice_R[t_start:t_end].sum()+df_behaviortrial.choice_M[t_start:t_end].sum())
@@ -937,10 +1088,12 @@ class BlockChoiceRatio(dj.Computed):
             key['block_choice_ratios_incremental_right'] = block_choice_ratios_incremental_right
             key['block_choice_ratios_incremental_left'] = block_choice_ratios_incremental_left
             key['block_choice_ratios_incremental_middle'] = block_choice_ratios_incremental_middle
+            #%%
         try:
             self.insert1(key,skip_duplicates=True)
-        except: 
-            print(key)     
+        except:
+            print('error with blockchoce ratio: '+str(key['subject_id']))
+            #print(key)     
      
 @schema
 class BlockAutoWaterCount(dj.Computed):
@@ -1155,6 +1308,7 @@ class SessionFittedChoiceCoefficients(dj.Computed):
 # =============================================================================
 #%%
 
+
                 
 @schema
 class SubjectFittedChoiceCoefficientsRNRC(dj.Computed):    
@@ -1171,70 +1325,6 @@ class SubjectFittedChoiceCoefficientsRNRC(dj.Computed):
         if key:
             self.insert1(key,skip_duplicates=True)    
         
-        
-# =============================================================================
-#         trials_back = logistic_regression_trials_back 
-#         first_session = logistic_regression_first_session
-#         max_bias = logistic_regression_max_bias
-#         label = list()
-#         data = list()
-#         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
-#             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-#             #%%
-#             df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
-#             if len(df_bias) > 0:
-#                 df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
-#                 sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
-#                 df_behaviortrial_all = None
-#                 for session in sessionsneeded:
-#                     df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
-#                     if type(df_behaviortrial_all) != pd.DataFrame:
-#                         df_behaviortrial_all  = df_behaviortrial_now
-#                     else:
-#                         df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)   
-#                 #%%
-#                 #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
-#                 if len(df_behaviortrial_all)>0:
-#                     sessions = np.unique(df_behaviortrial_all['session'])
-#                     for session in sessions:
-#                         if session >= first_session:
-#                             df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-#                             idx = np.argsort(df_behaviortrial['trial'])
-#                             choices = df_behaviortrial['trial_choice'].values[idx]
-#                             choices_digitized = np.zeros(len(choices))
-#                             choices_digitized[choices=='right']=1
-#                             choices_digitized[choices=='left']=-1
-#                             outcomes = df_behaviortrial['outcome'].values[idx]
-#                             rewards_digitized = choices_digitized.copy()
-#                             rewards_digitized[outcomes=='miss']=0
-#                             non_rewards_digitized = choices_digitized.copy()
-#                             non_rewards_digitized[outcomes=='hit']=0
-#                             for trial in range(trials_back,len(rewards_digitized)):
-#                                 if choices_digitized[trial] != 0:
-#                                     label.append(choices_digitized[trial])
-#                                     data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
-#                     label = np.array(label)
-#                     data = np.matrix(data)
-#                     if len(data) > 1:
-#                         x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-#                         logisticRegr = LogisticRegression(solver = 'lbfgs')
-#                         logisticRegr.fit(x_train, y_train)
-#                         #predictions = logisticRegr.predict(x_test)
-#                         score = logisticRegr.score(x_test, y_test)        
-#                         coefficients = logisticRegr.coef_
-#                         coefficients = coefficients[0]
-#                         coeff_rewards = coefficients[trials_back-1::-1]
-#                         coeff_choices = coefficients[-trials_back-1:trials_back-1:-1]
-#                         coeff_nonrewards = coefficients[-1:-trials_back-1:-1]
-#                         key['coefficients_rewards_subject'] = coeff_rewards
-#                         key['coefficients_choices_subject'] = coeff_choices
-#                         key['coefficients_nonrewards_subject'] = coeff_nonrewards
-#                         key['score_subject'] = score
-#                         self.insert1(key,skip_duplicates=True)    
-#                         print(wrnumber + ' coefficients fitted for reward+choice')
-#                     else:
-#                         print('not enough data for' + wrnumber)
-# =============================================================================
 
 @schema
 class SubjectFittedChoiceCoefficientsRC(dj.Computed):    
@@ -1249,64 +1339,7 @@ class SubjectFittedChoiceCoefficientsRC(dj.Computed):
         key  = logistic_regression_on_trial_history(key, 'RC')
         if key:
             self.insert1(key,skip_duplicates=True)
-            
-# =============================================================================
-#         trials_back = logistic_regression_trials_back 
-#         first_session = logistic_regression_first_session
-#         max_bias = logistic_regression_max_bias
-#         label = list()
-#         data = list()
-#         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
-#             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-#             df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
-#             if len(df_bias) > 0:
-#                 df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
-#                 sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
-#                 df_behaviortrial_all = None
-#                 for session in sessionsneeded:
-#                     df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
-#                     if type(df_behaviortrial_all) != pd.DataFrame:
-#                         df_behaviortrial_all  = df_behaviortrial_now
-#                     else:
-#                         df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
-#                 #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
-#                 if len(df_behaviortrial_all)>0:
-#                     sessions = np.unique(df_behaviortrial_all['session'])
-#                     for session in sessions:
-#                         if session >= first_session:
-#                             df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-#                             idx = np.argsort(df_behaviortrial['trial'])
-#                             choices = df_behaviortrial['trial_choice'].values[idx]
-#                             choices_digitized = np.zeros(len(choices))
-#                             choices_digitized[choices=='right']=1
-#                             choices_digitized[choices=='left']=-1
-#                             outcomes = df_behaviortrial['outcome'].values[idx]
-#                             rewards_digitized = choices_digitized.copy()
-#                             rewards_digitized[outcomes=='miss']=0
-#                             for trial in range(trials_back,len(rewards_digitized)):
-#                                 if choices_digitized[trial] != 0:
-#                                     label.append(choices_digitized[trial])
-#                                     data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
-#                     label = np.array(label)
-#                     data = np.matrix(data)
-#                     if len(data) > 1:
-#                         x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-#                         logisticRegr = LogisticRegression(solver = 'lbfgs')
-#                         logisticRegr.fit(x_train, y_train)
-#                         #predictions = logisticRegr.predict(x_test)
-#                         score = logisticRegr.score(x_test, y_test)        
-#                         coefficients = logisticRegr.coef_
-#                         coefficients = coefficients[0]
-#                         coeff_rewards = coefficients[trials_back-1::-1]
-#                         coeff_choices = coefficients[-1:trials_back-1:-1]
-#                         key['coefficients_rewards_subject'] = coeff_rewards
-#                         key['coefficients_choices_subject'] = coeff_choices
-#                         key['score_subject'] = score
-#                         self.insert1(key,skip_duplicates=True)    
-#                         print(wrnumber + ' coefficients fitted for reward+choice')
-#                     else:
-#                         print('not enough data for' + wrnumber)
-# =============================================================================
+
                         
                     
 @schema
@@ -1322,65 +1355,7 @@ class SubjectFittedChoiceCoefficientsNRC(dj.Computed):
         key  = logistic_regression_on_trial_history(key, 'NRC')
         if key:
             self.insert1(key,skip_duplicates=True)
-            
-# =============================================================================
-#         trials_back = logistic_regression_trials_back 
-#         first_session = logistic_regression_first_session
-#         max_bias = logistic_regression_max_bias
-#         label = list()
-#         data = list()
-#         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
-#             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-#             df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
-#             if len(df_bias)>0:
-#                 df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
-#                 sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
-#                 df_behaviortrial_all = None
-#                 for session in sessionsneeded:
-#                     df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
-#                     if type(df_behaviortrial_all) != pd.DataFrame:
-#                         df_behaviortrial_all  = df_behaviortrial_now
-#                     else:
-#                         df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
-#                 #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
-#                 if len(df_behaviortrial_all)>0:
-#                     sessions = np.unique(df_behaviortrial_all['session'])
-#                     for session in sessions:
-#                         if session >= first_session:
-#                             df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-#                             idx = np.argsort(df_behaviortrial['trial'])
-#                             choices = df_behaviortrial['trial_choice'].values[idx]
-#                             choices_digitized = np.zeros(len(choices))
-#                             choices_digitized[choices=='right']=1
-#                             choices_digitized[choices=='left']=-1
-#                             outcomes = df_behaviortrial['outcome'].values[idx]
-#                             nonrewards_digitized = choices_digitized.copy()
-#                             nonrewards_digitized[outcomes=='hit']=0
-#                             for trial in range(trials_back,len(nonrewards_digitized)):
-#                                 if choices_digitized[trial] != 0:
-#                                     label.append(choices_digitized[trial])
-#                                     data.append(np.concatenate([nonrewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
-#                     label = np.array(label)
-#                     data = np.matrix(data)
-#                     if len(data) > 1:
-#                         x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-#                         logisticRegr = LogisticRegression(solver = 'lbfgs')
-#                         logisticRegr.fit(x_train, y_train)
-#                         #predictions = logisticRegr.predict(x_test)
-#                         score = logisticRegr.score(x_test, y_test)        
-#                         coefficients = logisticRegr.coef_
-#                         coefficients = coefficients[0]
-#                         coeff_nonrewards = coefficients[trials_back-1::-1]
-#                         coeff_choices = coefficients[-1:trials_back-1:-1]
-#                         key['coefficients_nonrewards_subject'] = coeff_nonrewards
-#                         key['coefficients_choices_subject'] = coeff_choices
-#                         key['score_subject'] = score
-#                         self.insert1(key,skip_duplicates=True)    
-#                         print(wrnumber + ' coefficients fitted for reward+choice')
-#                     else:
-#                         print('not enough data for' + wrnumber)
-# =============================================================================
-                    
+ 
 @schema
 class SubjectFittedChoiceCoefficientsRNR(dj.Computed):    
     definition = """
@@ -1393,68 +1368,7 @@ class SubjectFittedChoiceCoefficientsRNR(dj.Computed):
     def make(self, key):
         key  = logistic_regression_on_trial_history(key, 'RNR')
         if key:
-            self.insert1(key,skip_duplicates=True)
-            
-# =============================================================================
-#         trials_back = logistic_regression_trials_back 
-#         first_session = logistic_regression_first_session
-#         max_bias = logistic_regression_max_bias
-#         label = list()
-#         data = list()
-#         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
-#             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-#             df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
-#             if len(df_bias) > 0:
-#                 df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
-#                 sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
-#                 df_behaviortrial_all = None
-#                 for session in sessionsneeded:
-#                     df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
-#                     if type(df_behaviortrial_all) != pd.DataFrame:
-#                         df_behaviortrial_all  = df_behaviortrial_now
-#                     else:
-#                         df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
-#                 #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
-#                 if len(df_behaviortrial_all)>0:
-#                     sessions = np.unique(df_behaviortrial_all['session'])
-#                     for session in sessions:
-#                         if session >= first_session:
-#                             df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-#                             idx = np.argsort(df_behaviortrial['trial'])
-#                             choices = df_behaviortrial['trial_choice'].values[idx]
-#                             choices_digitized = np.zeros(len(choices))
-#                             choices_digitized[choices=='right']=1
-#                             choices_digitized[choices=='left']=-1
-#                             outcomes = df_behaviortrial['outcome'].values[idx]
-#                             rewards_digitized = choices_digitized.copy()
-#                             rewards_digitized[outcomes=='miss']=0
-#                             non_rewards_digitized = choices_digitized.copy()
-#                             non_rewards_digitized[outcomes=='hit']=0
-#                             for trial in range(trials_back,len(rewards_digitized)):
-#                                 if choices_digitized[trial] != 0:
-#                                     label.append(choices_digitized[trial])
-#                                     data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
-#                     label = np.array(label)
-#                     data = np.matrix(data)
-#                     if len(data) > 1:
-#                         x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-#                         logisticRegr = LogisticRegression(solver = 'lbfgs')
-#                         logisticRegr.fit(x_train, y_train)
-#                         #predictions = logisticRegr.predict(x_test)
-#                         score = logisticRegr.score(x_test, y_test)        
-#                         coefficients = logisticRegr.coef_
-#                         coefficients = coefficients[0]
-#                         coeff_rewards = coefficients[trials_back-1::-1]
-#                         coeff_nonrewards = coefficients[-1:trials_back-1:-1]
-#                         key['coefficients_rewards_subject'] = coeff_rewards
-#                         key['coefficients_nonrewards_subject'] = coeff_nonrewards
-#                         key['score_subject'] = score
-#                         self.insert1(key,skip_duplicates=True)    
-#                         print(wrnumber + ' coefficients fitted for reward+choice')
-#                     else:
-#                         print('not enough data for' + wrnumber)
-# =============================================================================
-                        
+            self.insert1(key,skip_duplicates=True)               
 
 @schema
 class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):    
@@ -1468,66 +1382,7 @@ class SubjectFittedChoiceCoefficientsOnlyRewards(dj.Computed):
         key  = logistic_regression_on_trial_history(key, 'R')
         if key:
             self.insert1(key,skip_duplicates=True)
-        
-        #print(key)
-# =============================================================================
-#         trials_back = logistic_regression_trials_back 
-#         first_session = logistic_regression_first_session
-#         max_bias = logistic_regression_max_bias
-#         label = list()
-#         data = list()
-#         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
-#             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-#             df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
-#             if len(df_bias) > 0:
-#                 df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
-#                 sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
-#                 df_behaviortrial_all = None
-#                 for session in sessionsneeded:
-#                     df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
-#                     if type(df_behaviortrial_all) != pd.DataFrame:
-#                         df_behaviortrial_all  = df_behaviortrial_now
-#                     else:
-#                         df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
-#                 #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
-#                 if len(df_behaviortrial_all)>0:
-#                     sessions = np.unique(df_behaviortrial_all['session'])
-#                     for session in sessions:
-#                         if session >= first_session:
-#                             df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-#                             idx = np.argsort(df_behaviortrial['trial'])
-#                             choices = df_behaviortrial['trial_choice'].values[idx]
-#                             choices_digitized = np.zeros(len(choices))
-#                             choices_digitized[choices=='right']=1
-#                             choices_digitized[choices=='left']=-1
-#                             outcomes = df_behaviortrial['outcome'].values[idx]
-#                             rewards_digitized = choices_digitized.copy()
-#                             rewards_digitized[outcomes=='miss']=0
-#                             for trial in range(trials_back,len(rewards_digitized)):
-#                                 if choices_digitized[trial] != 0:
-#                                     label.append(choices_digitized[trial])
-#                                     data.append(rewards_digitized[trial-trials_back:trial])
-#                     label = np.array(label)
-#                     data = np.matrix(data)
-#                     if len(data) > 1:
-#                         x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-#                         logisticRegr = LogisticRegression(solver = 'lbfgs')
-#                         logisticRegr.fit(x_train, y_train)
-#                         #predictions = logisticRegr.predict(x_test)
-#                         score = logisticRegr.score(x_test, y_test)        
-#                         coefficients = logisticRegr.coef_
-#                         coefficients = coefficients[0]
-#                         coeff_rewards = coefficients[::-1]
-#                         key['coefficients_rewards_subject'] = coeff_rewards
-#                         key['score_subject'] = score
-#                         self.insert1(key,skip_duplicates=True)
-#                         print(wrnumber + ' coefficients fitted for only reward')
-#                     else:
-#                         print('not enough data for' + wrnumber)
-#                 else:
-#                     print('not enough data for ' + wrnumber)
-# =============================================================================
-                
+    
 @schema
 class SubjectFittedChoiceCoefficientsOnlyUnRewardeds(dj.Computed):    
     definition = """
@@ -1540,69 +1395,6 @@ class SubjectFittedChoiceCoefficientsOnlyUnRewardeds(dj.Computed):
         key  = logistic_regression_on_trial_history(key, 'NR')
         if key:
             self.insert1(key,skip_duplicates=True)
-            
-# =============================================================================
-#         #print(key)
-#         trials_back = logistic_regression_trials_back 
-#         first_session = logistic_regression_first_session
-#         max_bias = logistic_regression_max_bias
-#         label = list()
-#         data = list()
-#         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
-#             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-#             df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
-#             if len(df_bias) > 0:
-#                 df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
-#                 sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
-#                 df_behaviortrial_all = None
-#                 for session in sessionsneeded:
-#                     df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
-#                     if type(df_behaviortrial_all) != pd.DataFrame:
-#                         df_behaviortrial_all  = df_behaviortrial_now
-#                     else:
-#                         df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
-#                 #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
-#                 if len(df_behaviortrial_all)>0:
-#                     sessions = np.unique(df_behaviortrial_all['session'])
-#                     for session in sessions:
-#                         if session >= first_session:
-#                             df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-#                             idx = np.argsort(df_behaviortrial['trial'])
-#                             choices = df_behaviortrial['trial_choice'].values[idx]
-#                             choices_digitized = np.zeros(len(choices))
-#                             choices_digitized[choices=='right']=1
-#                             choices_digitized[choices=='left']=-1
-#                             outcomes = df_behaviortrial['outcome'].values[idx]
-#                             unrewards_digitized = choices_digitized.copy()
-#                             unrewards_digitized[outcomes=='hit']=0
-#                             for trial in range(trials_back,len(unrewards_digitized)):
-#                                 if choices_digitized[trial] != 0:
-#                                     label.append(choices_digitized[trial])
-#                                     data.append(unrewards_digitized[trial-trials_back:trial])
-#                     label = np.array(label)
-#                     data = np.matrix(data)
-#                     if len(data) > 1:
-#                         x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-#                         logisticRegr = LogisticRegression(solver = 'lbfgs')
-#                         logisticRegr.fit(x_train, y_train)
-#                         #predictions = logisticRegr.predict(x_test)
-#                         score = logisticRegr.score(x_test, y_test)        
-#                         coefficients = logisticRegr.coef_
-#                         coefficients = coefficients[0]
-#                         coeff_nonrewards = coefficients[::-1]
-#                         key['coefficients_nonrewards_subject'] = coeff_nonrewards
-#                         key['score_subject'] = score
-#                         self.insert1(key,skip_duplicates=True)
-#                         print(wrnumber + ' coefficients fitted for only reward')
-#                     else:
-#                         print('not enough data for' + wrnumber)
-#                 else:
-#                     print('not enough data for ' + wrnumber)                
-# =============================================================================
-# =============================================================================
-#         else:
-#             print('no WR number for this guy')
-# =============================================================================
 
 @schema
 class SubjectFittedChoiceCoefficientsOnlyChoices(dj.Computed):    
@@ -1616,66 +1408,153 @@ class SubjectFittedChoiceCoefficientsOnlyChoices(dj.Computed):
         key  = logistic_regression_on_trial_history(key, 'C')
         if key:
             self.insert1(key,skip_duplicates=True)
-# =============================================================================
-#         #print(key)
-#         trials_back = logistic_regression_trials_back 
-#         first_session = logistic_regression_first_session
-#         max_bias = logistic_regression_max_bias
-#         label = list()
-#         data = list()
-#         if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
-#             wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-#             df_bias = pd.DataFrame(SessionBias()& key & 'session >' +str(first_session-1))
-#             if len(df_bias) > 0:
-#                 df_bias['biasval'] = np.abs(df_bias['session_bias_choice']*2 -1)
-#                 sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
-#                 df_behaviortrial_all = None
-#                 for session in sessionsneeded:
-#                     df_behaviortrial_now = pd.DataFrame((experiment.BehaviorTrial() & key & 'session =' +str(session)))
-#                     if type(df_behaviortrial_all) != pd.DataFrame:
-#                         df_behaviortrial_all  = df_behaviortrial_now
-#                     else:
-#                         df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
-#                 #df_behaviortrial_all = pd.DataFrame((experiment.BehaviorTrial() & key & 'session >' +str(first_session-1)))
-#                 if len(df_behaviortrial_all)>0:
-#                     sessions = np.unique(df_behaviortrial_all['session'])
-#                     for session in sessions:
-#                         if session >= first_session:
-#                             df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-#                             idx = np.argsort(df_behaviortrial['trial'])
-#                             choices = df_behaviortrial['trial_choice'].values[idx]
-#                             choices_digitized = np.zeros(len(choices))
-#                             choices_digitized[choices=='right']=1
-#                             choices_digitized[choices=='left']=-1
-#                             for trial in range(trials_back,len(choices_digitized)):
-#                                 if choices_digitized[trial] != 0:
-#                                     label.append(choices_digitized[trial])
-#                                     data.append(choices_digitized[trial-trials_back:trial])
-#                     label = np.array(label)
-#                     data = np.matrix(data)
-#                     if len(data) > 1:
-#                         x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-#                         logisticRegr = LogisticRegression(solver = 'lbfgs')
-#                         logisticRegr.fit(x_train, y_train)
-#                         #predictions = logisticRegr.predict(x_test)
-#                         score = logisticRegr.score(x_test, y_test)        
-#                         coefficients = logisticRegr.coef_
-#                         coefficients = coefficients[0]
-#                         coeff_rewards = coefficients[::-1]
-#                         key['coefficients_choices_subject'] = coeff_rewards
-#                         key['score_subject'] = score
-#                         self.insert1(key,skip_duplicates=True)
-#                         print(wrnumber + ' coefficients fitted for only reward')
-#                     else:
-#                         print('not enough data for' + wrnumber)
-#                 else:
-#                     print('not enough data for ' + wrnumber)                
-#     # =============================================================================
-# #         else:
-# #             print('no WR number for this guy')
-# # =============================================================================            
-# =============================================================================
-            
+
+
+
+@schema
+class SubjectFittedChoiceCoefficients3lpRNRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    coefficients_nonrewards_subject_left  : longblob
+    coefficients_choices_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    coefficients_nonrewards_subject_right  : longblob
+    coefficients_choices_subject_right  : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle : longblob
+    coefficients_nonrewards_subject_middle  : longblob
+    coefficients_choices_subject_middle  : longblob
+    score_subject_middle :  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'RNRC')
+        if key and len(key.keys())>1:
+            try:
+                self.insert1(key,skip_duplicates=True)    
+            except:
+                print('problem with inserting coefficient')
+                print(key)
+                    
+        
+
+@schema
+class SubjectFittedChoiceCoefficients3lpRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    coefficients_choices_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    coefficients_choices_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle : longblob
+    coefficients_choices_subject_middle  : longblob
+    score_subject_middle :  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'RC')
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+
+                        
+                    
+@schema
+class SubjectFittedChoiceCoefficients3lpNRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_nonrewards_subject_left : longblob
+    coefficients_choices_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_nonrewards_subject_right : longblob
+    coefficients_choices_subject_right  : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_nonrewards_subject_middle : longblob
+    coefficients_choices_subject_middle  : longblob
+    score_subject_middle :  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'NRC')
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+ 
+@schema
+class SubjectFittedChoiceCoefficients3lpRNR(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    coefficients_nonrewards_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    coefficients_nonrewards_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle : longblob
+    coefficients_nonrewards_subject_middle  : longblob
+    score_subject_middle :  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'RNR')
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)               
+
+@schema
+class SubjectFittedChoiceCoefficients3lpR(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle : longblob
+    score_subject_middle :  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'R')
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+    
+@schema
+class SubjectFittedChoiceCoefficients3lpNR(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_nonrewards_subject_left : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_nonrewards_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_nonrewards_subject_middle : longblob
+    score_subject_middle :  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'NR')
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+
+@schema
+class SubjectFittedChoiceCoefficients3lpC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_choices_subject_left : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_choices_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_choices_subject_middle : longblob
+    score_subject_middle :  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'C')
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+
+
+ 
 
 @schema
 class SubjectFittedChoiceCoefficientsVSTime(dj.Computed):    ## TODO: BIAS correction
