@@ -294,19 +294,19 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpR())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsR())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards())    
         
     elif plottype == 'NR':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNR())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsNR())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsOnlyUnRewardeds())    
         
     elif plottype == 'C':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpC())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsC())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsOnlyChoices())    
     fig=plt.figure()
     axs = list()
     if lickportnum == '3lp':
@@ -327,6 +327,7 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
     
         subject_names_legend = list()
         wridxs = list()
+        subjectidxes = df_coeff['subject_id']== 'this is not a subject id'
         for wr_name in subject_names:
             subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
             idx = df_coeff['subject_id']==subject_id
@@ -338,13 +339,14 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
                 if 'C' in plottype:    
                     ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][idx].values[0])
                 subject_names_legend.append(wr_name)
+                subjectidxes = subjectidxes | idx
         ax = dict()
         if plottype[0] == 'R':
             ax1.set_xlabel('Choices back')
             ax1.set_ylabel('Coeff')
             ax1.set_title('Rewarded trials'+' - '+direction)
             ax1.legend(subject_names_legend,fontsize='small',loc = 'upper right')
-            ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+direction][subjectidxes].mean(),'k-',linewidth = 4)
             ax1.plot([0,len(df_coeff['coefficients_rewards_subject'+direction].mean())],[0,0],'k-')
             ax1.set_xlim([0, trialstoshow])
             ax['ax1'] = ax1
@@ -354,7 +356,7 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
             ax2.set_ylabel('Coeff')
             ax2.set_title('Unrewarded trials'+' - '+direction)
             ax2.legend(subject_names_legend,fontsize='small',loc = 'upper right')
-            ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][subjectidxes].mean(),'k-',linewidth = 4)
             ax2.plot([0,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())],[0,0],'k-')
             ax2.set_xlim([0, trialstoshow])
             ax['ax2'] = ax2
@@ -363,7 +365,7 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
             ax3.set_ylabel('Coeff')
             ax3.set_title('Choices'+' - '+direction)
             ax3.legend(subject_names_legend,fontsize='small',loc = 'upper right')
-            ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][subjectidxes].mean(),'k-',linewidth = 4)
             ax3.plot([0,len(df_coeff['coefficients_choices_subject'+direction].mean())],[0,0],'k-')
             ax3.set_xlim([0, trialstoshow])
             ax['ax3'] = ax3
