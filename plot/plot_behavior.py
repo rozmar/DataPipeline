@@ -254,32 +254,67 @@ def plotregressionaverage(wr_name = None, sessions = None):
     ax2.set_ylim([-.5, 1.5])
     
 
-def plot_regression_coefficients_3lp(plottype = 'NRC'):
+def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects = []):
+    plt.rcParams.update({'font.size': 15})
     trialstoshow = 15
     #trialstofit = 15
     df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session()* experiment.SessionDetails())
     subject_names = df_subject_wr['water_restriction_number'].unique()
     subject_names.sort()
-    
-    
+    if len(subjects)>1:
+        subjects_real = list()
+        for subject_now in subject_names:
+            if subject_now in subjects:
+                subjects_real.append(subject_now)
+        subject_names = subjects_real
     if plottype == 'RNRC':
-        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNRC())
+        if lickportnum == '3lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNRC())
+        elif lickportnum == '2lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsRNRC())
+            
     elif plottype == 'RNR':
-        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNR())
+        if lickportnum == '3lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNR())
+        elif lickportnum == '2lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsRNR())
     elif plottype == 'RC':
-        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRC())    
+        if lickportnum == '3lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRC())    
+        elif lickportnum == '2lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsRC())    
+        
     elif plottype == 'NRC':
-        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNRC())    
+        if lickportnum == '3lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNRC())    
+        elif lickportnum == '2lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsNRC())    
+        
     elif plottype == 'R':
-        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpR())    
+        if lickportnum == '3lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpR())    
+        elif lickportnum == '2lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsR())    
+        
     elif plottype == 'NR':
-        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNR())    
+        if lickportnum == '3lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNR())    
+        elif lickportnum == '2lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsNR())    
+        
     elif plottype == 'C':
-        df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpC())    
-    
+        if lickportnum == '3lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpC())    
+        elif lickportnum == '2lp':
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsC())    
     fig=plt.figure()
     axs = list()
-    for directionidx,direction in enumerate(['right','left','middle']):
+    if lickportnum == '3lp':
+            sides = ['_right','_left','_middle']
+    elif lickportnum == '2lp':
+            sides = ['']
+    
+    for directionidx,direction in enumerate(sides):
         xoffset = 0
         if plottype[0] == 'R':
             ax1=fig.add_axes([0,-directionidx,1,.8])  
@@ -291,16 +326,17 @@ def plot_regression_coefficients_3lp(plottype = 'NRC'):
             ax3=fig.add_axes([xoffset,-directionidx,1,.8])
     
         subject_names_legend = list()
+        wridxs = list()
         for wr_name in subject_names:
             subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
             idx = df_coeff['subject_id']==subject_id
             if sum(idx) == 1:
                 if plottype[0] == 'R':
-                    ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+'_'+direction][idx].values[0])
+                    ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+direction][idx].values[0])
                 if 'NR' in plottype:    
-                    ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+'_'+direction][idx].values[0])
+                    ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][idx].values[0])
                 if 'C' in plottype:    
-                    ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+'_'+direction].mean())+1),df_coeff['coefficients_choices_subject'+'_'+direction][idx].values[0])
+                    ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][idx].values[0])
                 subject_names_legend.append(wr_name)
         ax = dict()
         if plottype[0] == 'R':
@@ -308,8 +344,8 @@ def plot_regression_coefficients_3lp(plottype = 'NRC'):
             ax1.set_ylabel('Coeff')
             ax1.set_title('Rewarded trials'+' - '+direction)
             ax1.legend(subject_names_legend,fontsize='small',loc = 'upper right')
-            ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+'_'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
-            ax1.plot([0,len(df_coeff['coefficients_rewards_subject'+'_'+direction].mean())],[0,0],'k-')
+            ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax1.plot([0,len(df_coeff['coefficients_rewards_subject'+direction].mean())],[0,0],'k-')
             ax1.set_xlim([0, trialstoshow])
             ax['ax1'] = ax1
         
@@ -318,8 +354,8 @@ def plot_regression_coefficients_3lp(plottype = 'NRC'):
             ax2.set_ylabel('Coeff')
             ax2.set_title('Unrewarded trials'+' - '+direction)
             ax2.legend(subject_names_legend,fontsize='small',loc = 'upper right')
-            ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+'_'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+'_'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
-            ax2.plot([0,len(df_coeff['coefficients_nonrewards_subject'+'_'+direction].mean())],[0,0],'k-')
+            ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax2.plot([0,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())],[0,0],'k-')
             ax2.set_xlim([0, trialstoshow])
             ax['ax2'] = ax2
         if 'C' in plottype:
@@ -327,8 +363,8 @@ def plot_regression_coefficients_3lp(plottype = 'NRC'):
             ax3.set_ylabel('Coeff')
             ax3.set_title('Choices'+' - '+direction)
             ax3.legend(subject_names_legend,fontsize='small',loc = 'upper right')
-            ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+'_'+direction].mean())+1),df_coeff['coefficients_choices_subject'+'_'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
-            ax3.plot([0,len(df_coeff['coefficients_choices_subject'+'_'+direction].mean())],[0,0],'k-')
+            ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][df_coeff['subject_id']>100].mean(),'k-',linewidth = 4)
+            ax3.plot([0,len(df_coeff['coefficients_choices_subject'+direction].mean())],[0,0],'k-')
             ax3.set_xlim([0, trialstoshow])
             ax['ax3'] = ax3
     
@@ -552,6 +588,7 @@ def plot_local_psychometric_curve(wr_name = 'FOR08',session = 4, model = 'fitted
  #%%   
 def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differential', choice_filter = np.ones(10), local_filter = np.ones(10), RT_filter = np.ones(10), fit = 'not_specified'):
     warnings.filterwarnings("ignore", category=RuntimeWarning)
+    plt.rcParams.update({'font.size': 18})
 #%%
 
 # =============================================================================
@@ -706,7 +743,11 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
         ax2.plot(df_behaviortrial['trial'],df_behaviortrial['p_reward_middle'],'g-')
     ax2.set_ylabel('Reward probability')
     ax2.set_xlabel('Trial #')
-    ax2.legend(['left','right'],fontsize='small',loc = 'upper right')
+    if plottype == '3lickport':
+        legenda = ['left','right','middle']
+    else:
+        legenda = ['left','right']
+    ax2.legend(legenda,fontsize='small',loc = 'upper right')
     
     
     
@@ -816,12 +857,15 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
 #%%
 
 def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum = 20,max_bias = .5,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False):
+    
     #%%
+    plt.rcParams.update({'font.size': 14})
+    
 # =============================================================================
-#     wr_name = 'FOR12'
+#     wr_name = 'FOR10'
 #     minsession = 8
 #     mintrialnum = 30
-#     max_bias = .9
+#     max_bias = 10
 #     bootstrapnum = 50
 #     only_blocks_above_median = False
 #     only_blocks_above_mean = False,
@@ -830,8 +874,8 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
     allslopes = list()
     meanslopes = list()
     slopes_ci = list()
-    metricnames = ['block_choice_ratio_right','block_choice_ratio_first_tertile_right','block_choice_ratio_second_tertile_right','block_choice_ratio_third_tertile_right']
-    metricnames_xaxes = ['block_reward_ratio_right','block_reward_ratio_first_tertile_right','block_reward_ratio_second_tertile_right','block_reward_ratio_third_tertile_right']
+    metricnames = ['block_choice_ratio_right']
+    metricnames_xaxes = ['block_reward_ratio_right']
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     key = {
            'subject_id':subject_id,
@@ -940,14 +984,18 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
 
 def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession = 8,mintrialnum = 20,max_bias = .9,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False):
     #%%
-    wr_name = 'FOR01'
-    minsession = 8
-    mintrialnum = 30
-    max_bias = .9
-    bootstrapnum = 50
-    only_blocks_above_median = False
-    only_blocks_above_mean = False,
-    only_blocks_below_mean = False
+    plt.rcParams.update({'font.size': 14})
+    
+# =============================================================================
+#     wr_name = 'FOR10'
+#     minsession = 8
+#     mintrialnum = 30
+#     max_bias = .9
+#     bootstrapnum = 50
+#     only_blocks_above_median = False
+#     only_blocks_above_mean = False,
+#     only_blocks_below_mean = False
+# =============================================================================
     allslopes = list()
     meanslopes = list()
     slopes_ci = list()
@@ -1009,8 +1057,8 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             ax_1.plot([0,1],[0,1],'k-')
             ax_1.set_ylim([0, 1])
             ax_1.set_xlim([0, 1])
-            ax_1.set_xlabel('actual relative value (r_R/(r_R+r_L))')
-            ax_1.set_ylabel('relative choice (c_R/(c_R+c_L))')
+            ax_1.set_xlabel('actual relative value (r/r all)')
+            ax_1.set_ylabel('relative choice (c/c all')
             ax_1.set_title(metricname)
            
             ax_2=fig.add_axes([0,-idx,.8,.8])
@@ -1019,8 +1067,8 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             ax_2.plot([0,1],[0,1],'k-')
             ax_2.set_ylim([0, 1])
             ax_2.set_xlim([0, 1])
-            ax_2.set_xlabel('relative value (p_R/(p_R+p_L))')
-            ax_2.set_ylabel('relative choice (c_R/(c_R+c_L))')
+            ax_2.set_xlabel('relative value (p/p all)')
+            ax_2.set_ylabel('relative choice (c/c all)')
             ax_2.set_title(metricname)
             #%
             ax_3=fig.add_axes([2,-idx,.8,.8])
@@ -1047,8 +1095,8 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             ax_3.plot([-3,3],np.polyval(p,[-3,3]),'r-',linewidth = 3)
             for i in range(bootstrapnum):
                 ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color='red')
-            ax_3.set_xlabel('log reward rate log(r_R/r_L)')
-            ax_3.set_ylabel('log choice rate log(c_R/c_L)')
+            ax_3.set_xlabel('log reward rate log(r/r all)')
+            ax_3.set_ylabel('log choice rate log(c/c all)')
             ax_3.set_title('slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5)))
             allslopes.append(slopes)
             meanslopes.append(np.mean(slopes))
