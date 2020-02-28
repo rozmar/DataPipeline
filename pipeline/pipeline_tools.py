@@ -16,6 +16,8 @@ def get_schema_name(name):
 #         return 'rozmar_foraging-'+name
 # =============================================================================
         return 'group_shared_foraging-'+name
+    elif dj.config['project'] == 'voltage imaging':
+        return 'group_shared_voltageimaging-'+name
     #return 'rozmar_foraging-'+name
 # =============================================================================
 #     try:
@@ -29,22 +31,26 @@ def get_schema_name(name):
 # 
 #     return prefix + name
 # =============================================================================
-def drop_every_schema():
+def drop_every_schema(schemaname):
  #%% Drop everything   
  #%%
-    schema = dj.schema('group_shared_foraging-behavior-anal')
+    schema = dj.schema(schemaname+'-behavior-anal')
     schema.drop(force=True) 
      #%%
-    schema = dj.schema('group_shared_foraging-ephys-anal')
+    schema = dj.schema(schemaname+'-ephys-anal')
     schema.drop(force=True)
     #%%
-    schema = dj.schema('group_shared_foraging-ephys_patch')
+    schema = dj.schema(schemaname+'-ephys_patch')
     schema.drop(force=True)
     #%%
-    schema = dj.schema('group_shared_foraging-experiment')
+    schema = dj.schema(schemaname+'-imaging')
+    schema.drop(force=True)
+    
+    #%%
+    schema = dj.schema(schemaname+'-experiment')
     schema.drop(force=True)
     #%%
-    schema = dj.schema('group_shared_foraging-lab')
+    schema = dj.schema(schemaname+'-lab')
     schema.drop(force=True) 
     
 # =============================================================================
