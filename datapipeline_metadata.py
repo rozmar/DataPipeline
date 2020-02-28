@@ -39,7 +39,7 @@ def populatemetadata():
             df_wr = online_notebook.fetch_lab_metadata(ID)
             if type(df_wr) == pd.DataFrame:
                 df_wr.to_csv(dj.config['locations.metadata_lab']+ID+'.csv') 
-
+    
         with open(dj.config['locations.metadata_lab']+'last_modify_time.json', "w") as write_file:
             json.dump(lastmodify, write_file)
         print('Lab metadata updated')
@@ -55,7 +55,7 @@ def populatemetadata():
     for experimenternow in experimenterdata:
         try:
             lab.Person().insert1(experimenternow)
-        except dj.DuplicateError:
+        except dj.errors.DuplicateError:
             print('duplicate. experimenter: ',experimenternow['username'], ' already exists')
     
     #%% add rigs
@@ -69,7 +69,7 @@ def populatemetadata():
     for rignow in rigdata:
         try:
             lab.Rig().insert1(rignow)
-        except dj.DuplicateError:
+        except dj.errors.DuplicateError:
             print('duplicate. rig: ',rignow['rig'], ' already exists')
             
     #%% add viruses
@@ -95,11 +95,11 @@ def populatemetadata():
     for virusnow,serotypenow in zip(virusdata,serotypedata):
         try:
             lab.Serotype().insert1(serotypenow)
-        except dj.DuplicateError:
+        except dj.errors.DuplicateError:
             print('duplicate serotype: ',serotypenow['serotype'], ' already exists')
         try:
             lab.Virus().insert1(virusnow)
-        except dj.DuplicateError:
+        except dj.errors.DuplicateError:
             print('duplicate virus: ',virusnow['virus_name'], ' already exists')
     #%% populate subjects, surgeries and water restrictions
     print('adding surgeries and stuff')
@@ -116,7 +116,7 @@ def populatemetadata():
                     }
             try:
                 lab.Subject().insert1(subjectdata)
-            except dj.DuplicateError:
+            except dj.errors.DuplicateError:
                 print('duplicate. animal :',item[1]['animal#'], ' already exists')
             surgeryidx = 1
             while 'surgery date ('+str(surgeryidx)+')' in item[1].keys() and item[1]['surgery date ('+str(surgeryidx)+')'] and type(item[1]['surgery date ('+str(surgeryidx)+')']) == str:
@@ -132,7 +132,7 @@ def populatemetadata():
                         }
                 try:
                     lab.Surgery().insert1(surgerydata)
-                except dj.DuplicateError:
+                except dj.errors.DuplicateError:
                     print('duplicate. surgery for animal ',item[1]['animal#'], ' already exists: ', start_time)
                 #checking craniotomies
                 #%
@@ -150,7 +150,7 @@ def populatemetadata():
                                 }
                         try:
                             lab.Surgery.Procedure().insert1(proceduredata)
-                        except dj.DuplicateError:
+                        except dj.errors.DuplicateError:
                             print('duplicate cranio for animal ',item[1]['animal#'], ' already exists: ', cranioidx)
                     cranioidx += 1
                 #% 
@@ -190,7 +190,7 @@ def populatemetadata():
                                     }
                             try:
                                 lab.Surgery.VirusInjection().insert1(virusinjdata)
-                            except dj.DuplicateError:
+                            except dj.errors.DuplicateError:
                                 print('duplicate virus injection for animal ',item[1]['animal#'], ' already exists: ', injidx)
                     virusinjidx += 1    
                 #%
@@ -212,8 +212,8 @@ def populatemetadata():
                             'wr_start_date': df_wr['Date'][0],
                             'wr_start_weight': df_wr['Weight'][0],
                             }
-                try:
-                    lab.WaterRestriction().insert1(wrdata)
-                except dj.DuplicateError:
-                    print('duplicate. water restriction :',item[1]['animal#'], ' already exists')
+                    try:
+                        lab.WaterRestriction().insert1(wrdata)
+                    except dj.errors.DuplicateError:
+                        print('duplicate. water restriction :',item[1]['animal#'], ' already exists')
                       
