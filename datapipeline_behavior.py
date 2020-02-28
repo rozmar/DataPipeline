@@ -31,8 +31,8 @@ def populatemytables_core_paralel(arguments,runround):
         behavioranal.BlockRewardRatio().populate(**arguments)  
         behavioranal.BlockChoiceRatio().populate(**arguments)  
         behavioranal.BlockAutoWaterCount().populate(**arguments)  
-        behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
-        behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
+        #behavioranal.SessionBlockSwitchChoices().populate(**arguments)   #OBSOLETE
+        # behavioranal.SessionFittedChoiceCoefficients().populate(**arguments) #Not up to date
         behavioranal.SubjectFittedChoiceCoefficientsRNRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRNR.populate(**arguments)
@@ -75,8 +75,8 @@ def populatemytables_core(arguments,runround):
         behavioranal.BlockRewardRatio().populate(**arguments)  
         behavioranal.BlockChoiceRatio().populate(**arguments)  
         behavioranal.BlockAutoWaterCount().populate(**arguments)  
-        behavioranal.SessionBlockSwitchChoices().populate(**arguments)  
-        behavioranal.SessionFittedChoiceCoefficients().populate(**arguments)
+        #behavioranal.SessionBlockSwitchChoices().populate(**arguments)  #OBSOLETE
+        #behavioranal.SessionFittedChoiceCoefficients().populate(**arguments) # Not up to date
         behavioranal.SubjectFittedChoiceCoefficientsRNRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRNR.populate(**arguments)
@@ -104,12 +104,12 @@ def populatemytables_core(arguments,runround):
     if runround == 4:
         behavioranal.SessionPerformance.populate(**arguments)
         
-def populatemytables(paralel = True, cores = 10):
+def populatemytables(paralel = True, cores = 9,del_tables = True):
     IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
     #df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
     for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects      and removing subject related analysis   
        # if df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # only if the animal is still in training..
-        if len((experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"').fetch('session')) > 0:
+        if len((experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"').fetch('session')) > 0 and del_tables:
             
             schemas_todel = [behavioranal.SubjectFittedChoiceCoefficientsRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectFittedChoiceCoefficientsRC() & 'subject_id = "' + str(subject_id_now)+'"',
@@ -156,13 +156,14 @@ def populatemytables(paralel = True, cores = 10):
         ray.shutdown()
         #%%
     else:
-        arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
-        populatemytables_core(arguments)
+        for runround in [1,2,3,4]:
+            arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
+            populatemytables_core(arguments,runround)
 
 def populatebehavior(paralel = True,drop_last_session_for_mice_in_training = True):
     print('adding behavior experiments')
     if paralel:
-        ray.init()
+        ray.init(num_cpus = 9)
         result_ids = []
         #%%
         IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
@@ -229,7 +230,17 @@ def populatebehavior_core(IDs = None):
         for df_wr_row in df_wr.iterrows():
             if df_wr_row[1]['Time'] and type(df_wr_row[1]['Time'])==str and df_wr_row[1]['Time-end'] and type(df_wr_row[1]['Time-end'])==str and df_wr_row[1]['Training type'] != 'restriction' and df_wr_row[1]['Training type'] != 'handling': # we use it when both start and end times are filled in, restriction and handling is skipped
     
-                date_now = df_wr_row[1].Date.replace('-','')
+                date_now = df_wr_row[1].Date#.replace('-','')
+                if '-'in date_now:
+                    year = date_now[:date_now.find('-')]
+                    date_res = date_now[date_now.find('-')+1:]
+                    month = date_res[:date_res.find('-')]
+                    if len(month) == 1:
+                        month = '0'+month
+                    day = date_res[date_res.find('-')+1:]
+                    if len(day) == 1:
+                        day = '0'+day
+                    date_now  = year+month+day
                 print('subject: ',subject_now,'  date: ',date_now)
     
                 sessions_now = list()
@@ -247,26 +258,14 @@ def populatebehavior_core(IDs = None):
                                     session_start_times_now.append(session.started)
                                     experimentnames_now.append(exp.name)
                 order = np.argsort(session_start_times_now)
-                session_date = datetime(int(date_now[0:4]),int(date_now[4:6]),int(date_now[6:8]))
-                if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date > "'+str(session_date)+'"') != 0: # if it is not the last
+                try:
+                    session_date = datetime(int(date_now[0:4]),int(date_now[4:6]),int(date_now[6:8]))
+                except:
+                    print(['ERROR with',session_date])
+                    session_date = datetime(int(date_now[0:4]),int(date_now[4:6]),int(date_now[6:8]))
+                if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date >= "'+str(session_date)+'"') != 0: # if it is not the last
                     print('session already imported, skipping: ' + str(session_date))
                     dotheupload = False
-                elif len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0: # if it is the last
-                    dotheupload = False
-    # =============================================================================
-    #                     if delete_last_session_before_upload == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
-    #                         print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
-    #                         if len(experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"') != 0:
-    #                             print('dropping last session')
-    #                             session_todel =experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"' & 'session_date = "'+str(session_date)+'"'
-    #                             dj.config['safemode'] = False
-    #                             session_todel.delete()
-    #                             dj.config['safemode'] = True
-    #                         delete_last_session_before_upload = False
-    #                         dotheupload = True
-    #                     else:
-    #                         dotheupload = False
-    # =============================================================================
                 else: # reuploading new session that is not present on the server
                     dotheupload = True
                 #%%
