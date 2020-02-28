@@ -8,29 +8,35 @@ import time as timer
 import pandas as pd
 import numpy as np
 import datajoint as dj
+import os
 dj.conn()
 from pipeline import pipeline_tools
-from pipeline import lab, experiment, ephys_patch, ephysanal
+from pipeline import lab, experiment, ephys_patch, ephysanal, imaging
 import ray
 
-#%
+#%%
 @ray.remote
 def populatemytables_core_paralel(arguments,runround):
     if runround == 1:
         ephysanal.SquarePulse().populate(**arguments)
+        ephysanal.SweepFrameTimes().populate(**arguments)
     elif runround == 2:
-        ephysanal.SeriesResistance().populate(**arguments)
+        ephysanal.SquarePulseSeriesResistance().populate(**arguments)
+        ephysanal.SweepSeriesResistance().populate(**arguments)
         ephysanal.ActionPotential().populate(**arguments)
+        
 
 def populatemytables_core(arguments,runround):
     if runround == 1:
         ephysanal.SquarePulse().populate(**arguments)
+        ephysanal.SweepFrameTimes().populate(**arguments)
     elif runround == 2:
-        ephysanal.SeriesResistance().populate(**arguments)
+        ephysanal.SquarePulseSeriesResistance().populate(**arguments)
+        ephysanal.SweepSeriesResistance().populate(**arguments)
         ephysanal.ActionPotential().populate(**arguments)
-def populatemytables(paralel=True,cores = 6):
+def populatemytables(paralel=True,cores = 9):
     if paralel:
-        ray.init()
+        ray.init(num_cpus = cores)
         for runround in [1,2]:
             arguments = {'display_progress' : False, 'reserve_jobs' : True,'order' : 'random'}
             print('round '+str(runround)+' of populate')
@@ -43,8 +49,10 @@ def populatemytables(paralel=True,cores = 6):
             
         ray.shutdown()
     else:
-        arguments = {'display_progress' : True, 'reserve_jobs' : False,'order' : 'random'}
-        populatemytables_core(arguments)
+        for runround in [1,2]:
+            arguments = {'display_progress' : True, 'reserve_jobs' : False}
+            populatemytables_core(arguments,runround)
+
     
     
 def read_h5f_metadata(metadata_h5):
@@ -73,11 +81,14 @@ def read_h5f_metadata(metadata_h5):
     return metadata
 #%%
 def populateelphys():
-    
+  #%  
     df_subject_wr_sessions=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
     df_subject_ids = pd.DataFrame(lab.Subject())
-    subject_names = df_subject_wr_sessions['water_restriction_number'].unique()
-    subject_names.sort()
+    if len(df_subject_wr_sessions)>0:
+        subject_names = df_subject_wr_sessions['water_restriction_number'].unique()
+        subject_names.sort()
+    else:
+        subject_names = list()
     subject_ids = df_subject_ids['subject_id'].unique()
     #%
     sumdata=list()
@@ -103,7 +114,7 @@ def populateelphys():
                         for wrname_potential in subject_ids: # look for water restriction number
                             if str(wrname_potential) in wrname_ephys.lower():
                                 subject_id = wrname_potential
-                                if len((df_subject_wr_sessions.loc[df_subject_wr_sessions['subject_id'] == subject_id, 'water_restriction_number']).unique())>0:
+                                if len(df_subject_wr_sessions) > 0 and len((df_subject_wr_sessions.loc[df_subject_wr_sessions['subject_id'] == subject_id, 'water_restriction_number']).unique())>0:
                                     wrname = (df_subject_wr_sessions.loc[df_subject_wr_sessions['subject_id'] == subject_id, 'water_restriction_number']).unique()[0]
                                 else:
                                     wrname = 'no water restriction number for this mouse'
@@ -168,7 +179,8 @@ def populateelphys():
                                                             sweepstarttimes.append(sweepstarttime)
                                                             ephisdata_cell.append(ephisdata)
                                                         except: # new file version
-                                                            #%%
+                                                            #print('new file version')
+                                                            #%
                                                             ephysfile = h5.File(sweep_dir.joinpath(file), "r")
                                                             data = ephysfile['data'][()]
                                                             metadata_h5 = ephysfile['info']
@@ -177,7 +189,7 @@ def populateelphys():
                                                             sweepstarttime = datetime.datetime.fromtimestamp(metadata[2]['DAQ'][daqchannels[0]]['startTime'])
                                                             relativetime = (sweepstarttime-cellstarttime).total_seconds()
                                                             if len(ephisdata_cell) > 0 and ephisdata_cell[-1]['sweepstarttime'] == sweepstarttime:
-                                                                ephisdata = ephisdata_cell[-1]
+                                                                ephisdata = ephisdata_cell.pop()   
                                                             else:
                                                                 ephisdata = dict()
                                                             if 'primary' in daqchannels: # ephys data
@@ -192,7 +204,7 @@ def populateelphys():
                                                                 ephisdata['sweep']= sweep
                                                                 sweepstarttimes.append(sweepstarttime)
                                                             else:# other daq stuff
-                                                                #%%
+                                                                #%
                                                                 for idx,channel in enumerate(metadata[0]['cols']):    
                                                                     channelname = channel['name'].decode()
                                                                     if channelname[0] == 'u':
@@ -202,12 +214,9 @@ def populateelphys():
                                                                         else:
                                                                             print('waiting in the other daq')
                                                                             timer.sleep(1000)
-                                                                    
-                                                                        
-                                                            #%%
                                                             ephisdata_cell.append(ephisdata)
-                                                            #%%
-    # =============================================================================
+                                                            #%
+    # ============================================================================
     #                             if wrname == 'FOR04':
     # =============================================================================
                                 # add session to DJ if not present
@@ -234,29 +243,35 @@ def populateelphys():
                                         if 'type'in serieses['.'].keys():
                                             if serieses['.']['type'] == 'interneuron':
                                                 celldata['cell_type'] = 'int'
+                                            elif serieses['.']['type'] == 'unknown' or serieses['.']['type'] == 'fail':
+                                                celldata['cell_type'] = 'unidentified'
                                             else:
                                                 print('unhandled cell type!!')
                                                 timer.sleep(1000)
                                         else:
                                             celldata['cell_type'] = 'unidentified'
                                         celldata['cell_recording_start'] = (sweepstarttimes[0]).strftime('%H:%M:%S')
-                                        if 'depth' in serieses['.'].keys():
+                                        if 'depth' in serieses['.'].keys() and len(serieses['.']['depth'])>0:
                                             celldata['depth'] = int(serieses['.']['depth'])
                                         else:
                                             celldata['depth']= -1
                                         ephys_patch.Cell().insert1(celldata, allow_direct_insert=True)
+                                        if 'notes' in serieses['.'].keys():
+                                            cellnotes = serieses['.']['notes']
+                                        else:
+                                            cellnotes = ''
                                         cellnotesdata = {
                                                 'subject_id': subject_id,
                                                 'session': session,
                                                 'cell_number': cell_number,
-                                                'notes': serieses['.']['notes']
+                                                'notes': cellnotes
                                                 }                            
                                         ephys_patch.CellNotes().insert1(cellnotesdata, allow_direct_insert=True)
             
                                         #%
                                         for i, ephisdata in enumerate(ephisdata_cell):
                                             
-                                                #%%
+                                                #%
                                             sweep_number = i
                                             sweep_data = {
                                                     'subject_id': subject_id,
@@ -291,7 +306,19 @@ def populateelphys():
                                                     channelunits.append(line_now['units'])
                                             commandidx = np.where(np.array(channelnames) == 'command')[0][0]
                                             dataidx = np.where(np.array(channelnames) == 'primary')[0][0]
-                                            
+                                            #%%
+                                            clampparams_data = ephisdata['metadata'][2]['ClampState']['ClampParams'].copy()
+                                            clampparams_data_new = dict()
+                                            for clampparamkey in clampparams_data.keys():#6004 is true for some reason.. changing it back to 1
+                                                if type(clampparams_data[clampparamkey]) == np.int32:
+                                                    if clampparams_data[clampparamkey] > 0:
+                                                        clampparams_data[clampparamkey] = int(1)
+                                                    else:
+                                                        clampparams_data[clampparamkey] = int(0)
+                                                else:
+                                                    clampparams_data[clampparamkey] = float(clampparams_data[clampparamkey])
+                                                clampparams_data_new[clampparamkey.lower()] = clampparams_data[clampparamkey]
+                                                #%%
                                             sweepmetadata_data = {
                                                     'subject_id': subject_id,
                                                     'session': session,
@@ -300,7 +327,7 @@ def populateelphys():
                                                     'recording_mode': recording_mode,
                                                     'sample_rate': np.round(1/np.median(np.diff(ephisdata['metadata'][1]['values'])))
                                                     }
-                                            
+                                            sweepmetadata_data.update(clampparams_data_new)
                                             sweepdata_data = {
                                                     'subject_id': subject_id,
                                                     'session': session,
@@ -318,11 +345,21 @@ def populateelphys():
                                                     'stimulus_trace': ephisdata['data'][commandidx,:],
                                                     'stimulus_units': ephisdata['metadata'][0]['cols'][commandidx]['units']
                                                     }
-                                            ephys_patch.Sweep().insert1(sweep_data, allow_direct_insert=True)
+                                            #print('waiting')
+                                            #timer.sleep(10000)
+                                            try:
+                                                ephys_patch.Sweep().insert1(sweep_data, allow_direct_insert=True)
+                                            except:
+                                                print(sweep_data)#just to catch and error TODO remove this
+                                                ephys_patch.Sweep().insert1(sweep_data, allow_direct_insert=True)
+                                            try: # maybe it's a duplicate..
+                                                ephys_patch.ClampParams().insert1(clampparams_data_new, allow_direct_insert=True)
+                                            except:
+                                                pass
                                             ephys_patch.SweepMetadata().insert1(sweepmetadata_data, allow_direct_insert=True)
                                             ephys_patch.SweepResponse().insert1(sweepdata_data, allow_direct_insert=True)
                                             ephys_patch.SweepStimulus().insert1(sweepstimulus_data, allow_direct_insert=True)
-                                            #%%
+                                            #%
                                             if 'OrcaFlashExposure' in ephisdata.keys():
                                                 sweepimagingexposuredata = {
                                                     'subject_id': subject_id,
@@ -342,64 +379,5 @@ def populateelphys():
                                                     'temperature_units' :  'dunno'
                                                     }
                                                 ephys_patch.SweepTemperature().insert1(sweeptemperaturedata, allow_direct_insert=True)
-# =============================================================================
-#                                             print('waiting for adding daq')
-#                                             timer.sleep(1000)
-# =============================================================================
-# =============================================================================
-#                             else:
-#                                 print('waiting')
-#                                 timer.sleep(1000)
-#         
-# =============================================================================
-                                                    
-# =============================================================================
-#      
-#  
-# #%%
-# file = '/home/rozmar/Network/Voltage_imaging_rig_1p_elphys/acq4/rozsam/2019.08.17_000/cell_001/CCIV_001/001/Clamp1.ma'
-# ephysfile = MetaArray()
-# ephysfile.readFile(file)
-# data = ephysfile.asarray()
-# metadata = ephysfile.infoCopy()
-# 
-# 
-# 
-# 
-# 
-# import matplotlib.pyplot as plt
-# import pyabf
-# 
-# abf = pyabf.ABF("/home/rozmar/Downloads/CPN trace for Marci.abf")
-# abf.setSweep(0)
-# #%%
-# plt.plot(abf.sweepX, abf.sweepY)
-# plt.show()
-# plt.plot(abf.sweepX, abf.sweepY)
-# plt.xlim([.001,.003])
-# plt.ylim([-70,-50])
-# plt.show()
-# plt.plot(abf.sweepX, abf.sweepY)
-# plt.xlim([.0042,.0062])
-# plt.ylim([-60,-40])
-# plt.show()
-# 
-# #%%
-# import h5py
-# import numpy as np
-# #f = h5py.File('/home/rozmar/Network/Voltage_imaging_rig_1p_elphys/acq4/rozsam/2019.08.20_000/CCIV_001/000/Clamp1.ma','r')
-# f = h5py.File('/home/rozmar/Network/Voltage_imaging_rig_1p_elphys/acq4/rozsam/2019.08.17_000/cell_001/CCIV_001/001/Clamp1.ma','r')
-#  
-# 
-# #%%
-# 
-# 
-# #%%
-# data = ma.MetaArray(file='/home/rozmar/Data/acq4/Voltage_rig_1P/2019.08.17_000/cell_001/cont_000/001/Clamp1.ma')
-# 
-# 
-# =============================================================================
 
 
-
-#%%
