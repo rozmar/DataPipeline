@@ -17,8 +17,8 @@ class Movie(dj.Imported):
     movie_x_size                : double                # (pixels)
     movie_y_size                : double                # (pixels)
     movie_frame_rate            : double                # (Hz)             
-    movie_frame_num             : int                   #number of frames        
-    movie_start_time            : decimal(10, 4)        # (s) from session start
+    movie_frame_num             : int                   # number of frames        
+    movie_start_time            : decimal(10, 4)        # (s) from session start # it should be 10,6??? maybe end_time would also be useful
     movie_pixel_size            : decimal(5,2)          # in microns
     """ 
     
@@ -64,8 +64,10 @@ class RegisteredMovie(dj.Imported): #MovieFile
 class MotionCorrection(dj.Imported): 
     definition = """
     -> RegisteredMovie
+    motion_correction_id    : smallint             # id of motion correction in case of multiple motion corrections
     ---
-    motion_corr_vectors         : longblob              # registration vectors   #motion_corr_parameters      : longblob              # probably a dict?  ##motion_corr_metrics         : longblob              # ??
+    motion_corr_description     : varchar(300)         #description of the motion correction
+    motion_corr_vectors         : longblob             # registration vectors   #motion_corr_parameters      : longblob              # probably a dict?  ##motion_corr_metrics         : longblob              # ??
     """
 
 
@@ -75,28 +77,47 @@ class ROIType(dj.Lookup):
     #
     roi_type  :  varchar(30)
     """
-    contents = zip(['SpikePursuit','Suite2P'])
+    contents = zip(['SpikePursuit','SpikePursuit_dexpF0','Suite2P','VolPy','VolPy_dexpF0'])
 
 @schema
 class ROI(dj.Imported): 
 # ROI (Region of interest - e.g. cells)
     definition = """
     -> RegisteredMovie
-    roi_number                      : int           # roi number (restarts for every session)
-    ---
     -> ROIType    
-    roi_f                           : longblob      # raw stuff
-    roi_dff                         : longblob      #spikepursuit
-    roi_f0                          : longblob      #spikepursuit
-    roi_spike_indexes               : longblob      #spikepursuit 
+    roi_number                      : int           # roi number (restarts for every registered movie)
+    ---
+    roi_dff                         : longblob      # spikepursuit
+    roi_f0                          : longblob      # spikepursuit
+    roi_spike_indices               : longblob      # spikepursuit 
+    roi_centroid_x                  : double        # ROI centroid  x, pixels
+    roi_centroid_y                  : double        # ROI centroid  y, pixels
+    roi_mask                        : longblob      # pixel mask 
     """
-    
+
+#-----------------------GROUND TRUTH RELATED STUFF    
 # =============================================================================
 # @schema
-# class TextInList(dj.Imported):
+# class ROIEphysCorrelation(dj.Imported): 
+# # ROI (Region of interest - e.g. cells)
 #     definition = """
-#     index                     : int
+#     -> ROI
+#     -> ephys_patch.Sweep
 #     ---
-#     textlist                : longblob              # file names as a list
+#     time_lag                        : float #ms   
+#     corr_coeff                      : float #-1 - 1
+#     """
+#     
+# @schema
+# class ROIAPWave(dj.Imported): 
+# # ROI (Region of interest - e.g. cells)
+#     definition = """ # this is the optical AP waveform relative to the real AP peak
+#     -> ROI
+#     -> ephysanal.ActionPotential
+#     ---
+#     apwave_time                     : longblob
+#     apwave_dff                      : longblob
+#     apwave_snratio                  : float
 #     """
 # =============================================================================
+#-----------------------GROUND TRUTH RELATED STUFF    
