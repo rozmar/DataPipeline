@@ -28,7 +28,7 @@ block_reward_ratio_increment_window = 20
 block_reward_ratio_increment_max = 200
 #%%
 def calculate_average_likelihood(local_income,choice,parameters):
-    #%%
+    #%
 # =============================================================================
 #         local_income = np.asarray(df_choices['local_fractional_income'][0].tolist())
 #         choice = np.asarray(df_choices['choice_local_fractional_income'][0].tolist())
@@ -104,7 +104,7 @@ def calculate_average_likelihood_series(local_income,choice,parameters,local_fil
 # =============================================================================
 
 def calculate_local_income_three_ports(df_behaviortrial,filter_now):
-
+#%
     trialnum_differential = df_behaviortrial['trial']
     trialnum_fractional = df_behaviortrial['trial']
     right_choice = (df_behaviortrial['trial_choice'] == 'right').values
@@ -152,17 +152,19 @@ def calculate_local_income_three_ports(df_behaviortrial,filter_now):
     local_fractional_income_middle = local_fractional_income_middle[~todel]
     choice_local_fractional_income = choice_local_fractional_income[~todel]
     trialnum_fractional = trialnum_differential[~todel]
+    #%
     dataout = dict()
     dataout['local_fractional_income_right'] = local_fractional_income_right
     dataout['local_fractional_income_left'] = local_fractional_income_left
     dataout['local_fractional_income_middle'] = local_fractional_income_middle
     dataout['choice_local_fractional_income'] = choice_local_fractional_income
-    dataout['trialnum_fractional'] = trialnum_fractional
+    dataout['trialnum_fractional'] = trialnum_fractional.values
     dataout['local_differential_income_right'] = local_differential_income_right
     dataout['local_differential_income_left'] = local_differential_income_left
     dataout['local_differential_income_middle'] = local_differential_income_middle
     dataout['choice_local_differential_income'] = choice_local_differential_income
-    dataout['trialnum_differential'] = trialnum_differential
+    dataout['trialnum_differential'] = trialnum_differential.values
+    #%
     return dataout
 
 def bin_psychometric_curve(local_income,choice_num,local_income_binnum):
@@ -198,7 +200,7 @@ def bin_psychometric_curve(local_income,choice_num,local_income_binnum):
 
 
 def logistic_regression_on_trial_history(key, fittype):
-#%%
+#%
     trials_back = logistic_regression_trials_back 
     first_session = logistic_regression_first_session
     max_bias = logistic_regression_max_bias
@@ -218,7 +220,7 @@ def logistic_regression_on_trial_history(key, fittype):
                 else:
                     df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
             #print(key)
-            #%%
+            #%
             if len(df_behaviortrial_all)>0:
                 sessions = np.unique(df_behaviortrial_all['session'])
                 for session in sessions:
@@ -296,7 +298,7 @@ def logistic_regression_on_trial_history(key, fittype):
                         coeff_choices = coefficients[::-1]
                         key['coefficients_choices_subject'] = coeff_choices
                     key['score_subject'] = score
-                    #%%
+                    #%
                     return key
                     print(wrnumber + ' coefficients fitted for ' + fittype)
                 else:
@@ -304,7 +306,7 @@ def logistic_regression_on_trial_history(key, fittype):
                     print('not enough data for' + wrnumber +' in '+ fittype)
 
 def logistic_regression_on_trial_history_3lp(key, fittype):
-#%%
+#%
     trials_back = logistic_regression_trials_back 
     first_session = logistic_regression_first_session
     max_bias = logistic_regression_max_bias
@@ -407,7 +409,7 @@ def logistic_regression_on_trial_history_3lp(key, fittype):
                         print('not enough data for' + wrnumber +' in '+ fittype)                    
                         return None
                         
-                        #%%
+                        #%
                 print(wrnumber + ' coefficients fitted for ' + fittype)
                 return key
             else:
@@ -415,9 +417,9 @@ def logistic_regression_on_trial_history_3lp(key, fittype):
                 return None
                 
 
-#%%
+#%
 def logistic_regression_on_trial_history_convolved(key, fittype):
-    #%%
+    #%
     filter_time_constants = np.arange(1,25,2)
     trials_back = logistic_regression_trials_back 
     first_session = logistic_regression_first_session
@@ -523,7 +525,7 @@ def logistic_regression_on_trial_history_convolved(key, fittype):
                         key['coefficients_choices_subject'] = coeff_choices
                     key['score_subject'] = score
                     key['filter_time_constants'] = filter_time_constants
-                    #%%
+                    #%
                     return key
                     print(wrnumber + ' coefficients fitted for ' + fittype)
                 else:
@@ -1112,7 +1114,7 @@ class BlockAutoWaterCount(dj.Computed):
         self.insert1(key,skip_duplicates=True)
 
 @schema
-class SessionBlockSwitchChoices(dj.Computed):
+class SessionBlockSwitchChoices(dj.Computed): # TODO update to 3  lickports
     definition = """
     -> experiment.Session
     ---
@@ -1657,12 +1659,15 @@ class SessionPsychometricDataBoxCar(dj.Computed):
     local_filter : longblob
     """  
     def make(self,key):
+        #%%
+        #key = {'subject_id': 452274, 'session': 5}
         warnings.filterwarnings("ignore", category=RuntimeWarning)        
         local_filter = np.ones(10)
         local_filter = local_filter/sum(local_filter)
         df_behaviortrial = pd.DataFrame(experiment.BehaviorTrial()&key)
         if len(df_behaviortrial)>1:
             #local_fractional_income, choice_local_fractional_income, trialnum_fractional, local_differential_income, choice_local_differential_income, trialnum_differential  = calculate_local_income(df_behaviortrial,local_filter)
+            #print(key)
             data = calculate_local_income_three_ports(df_behaviortrial,local_filter)
             key['local_fractional_income_right'] = data['local_fractional_income_right']
             key['local_fractional_income_left'] = data['local_fractional_income_left']
@@ -1675,6 +1680,7 @@ class SessionPsychometricDataBoxCar(dj.Computed):
             key['choice_local_differential_income']= data['choice_local_differential_income']
             key['trialnum_local_differential_income'] = data['trialnum_differential']
             key['local_filter'] = local_filter
+            #%%
             self.insert1(key,skip_duplicates=True)
 
 @schema
@@ -1736,11 +1742,15 @@ class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
     local_filter : longblob
     """     
     def make(self,key):  
+        #%%
+# =============================================================================
+#         key = {'subject_id': 457495}
+# =============================================================================
         minsession = 8
         reward_ratio_binnum = 10
         df_psychcurve = pd.DataFrame(SessionPsychometricDataBoxCar()&key & 'session > '+str(minsession-1))
         if len(df_psychcurve )>0:
-            
+            print(key)
             reward_ratio_combined = np.concatenate(df_psychcurve['local_fractional_income_right'].values)
             choice_num = np.concatenate(df_psychcurve['choice_local_fractional_income'].values)
             mu,sigma = curve_fit(norm.cdf, reward_ratio_combined, choice_num,p0=[0,1])[0]
@@ -1763,7 +1773,8 @@ class SubjectPsychometricCurveBoxCarFractional(dj.Computed):
             key['linear_fit_slope'] = slope
             key['linear_fit_c'] = c
             key['trial_num'] = n
-            key['local_filter'] = df_psychcurve['local_filter']
+            key['local_filter'] = df_psychcurve['local_filter'][0]
+            #%%
             self.insert1(key,skip_duplicates=True)
 
 @schema    
@@ -1813,7 +1824,7 @@ class SubjectPsychometricCurveBoxCarDifferential(dj.Computed):
             key['linear_fit_slope'] = slope
             key['linear_fit_c'] = c
             key['trial_num'] = n
-            key['local_filter'] = df_psychcurve['local_filter']
+            key['local_filter'] = df_psychcurve['local_filter'][0]
             #%%
             self.insert1(key,skip_duplicates=True)
 
@@ -1863,7 +1874,7 @@ class SubjectPsychometricCurveFittedFractional(dj.Computed):
             key['linear_fit_slope'] = slope
             key['linear_fit_c'] = c
             key['trial_num'] = n
-            key['local_filter'] = df_psychcurve['local_filter']
+            key['local_filter'] = df_psychcurve['local_filter'][0]
             self.insert1(key,skip_duplicates=True)
     
 @schema    
@@ -1919,7 +1930,7 @@ class SubjectPsychometricCurveFittedDifferential(dj.Computed):
             key['linear_fit_slope'] = slope
             key['linear_fit_c'] = c
             key['trial_num'] = n
-            key['local_filter'] = df_psychcurve['local_filter']
+            key['local_filter'] = df_psychcurve['local_filter'][0]
             self.insert1(key,skip_duplicates=True)    
             
 @schema    
