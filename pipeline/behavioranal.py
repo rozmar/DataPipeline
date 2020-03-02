@@ -801,7 +801,7 @@ class SessionTrainingType(dj.Computed):
     def make(self, key):
         task_protocol,p_reward_left,p_reward_right,p_reward_middle = (experiment.BehaviorTrial() *experiment.SessionBlock() & key).fetch('task_protocol','p_reward_left','p_reward_right','p_reward_middle')
         if len(task_protocol)>0:  # in some sessions there is no behavior at all..
-            key['session_task_protocol'] = task_protocol.median()
+            key['session_task_protocol'] = np.median(task_protocol)
             p_reward_left = np.asarray(p_reward_left,'float')
             p_reward_right = np.asarray(p_reward_right,'float')
             p_reward_middle = np.asarray(p_reward_middle,'float')
