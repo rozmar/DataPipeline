@@ -796,12 +796,22 @@ class SessionTrainingType(dj.Computed):
     -> experiment.Session
     ---
     session_task_protocol : tinyint # the number of the dominant task protocol in the session
+    session_real_foraging : bool # True if it is real foraging, false in case of pretraining
     """
     def make(self, key):
-        df_taskdetails = pd.DataFrame(experiment.BehaviorTrial() & key)
-        if len(df_taskdetails)>0:  # in some sessions there is no behavior at all..
-            key['session_task_protocol'] = df_taskdetails['task_protocol'].median()
+        task_protocol,p_reward_left,p_reward_right,p_reward_middle = (experiment.BehaviorTrial() *experiment.SessionBlock() & key).fetch('task_protocol','p_reward_left','p_reward_right','p_reward_middle')
+        if len(task_protocol)>0:  # in some sessions there is no behavior at all..
+            key['session_task_protocol'] = task_protocol.median()
+            p_reward_left = np.asarray(p_reward_left,'float')
+            p_reward_right = np.asarray(p_reward_right,'float')
+            p_reward_middle = np.asarray(p_reward_middle,'float')
+            if any((p_reward_left<1) & (p_reward_left>0)) or any((p_reward_right<1) & (p_reward_right>0)) or any((p_reward_middle<1) & (p_reward_middle>0)):
+                key['session_real_foraging'] =  True
+            else:
+                key['session_real_foraging'] =  False
             self.insert1(key,skip_duplicates=True)
+
+
        
 @schema
 class SessionBias(dj.Computed):
