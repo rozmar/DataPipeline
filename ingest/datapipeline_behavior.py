@@ -57,6 +57,11 @@ def populatemytables_core_paralel(arguments,runround):
         behavioranal.SubjectPsychometricCurveBoxCarDifferential.populate(**arguments)
         behavioranal.SubjectPsychometricCurveFittedFractional.populate(**arguments)
         behavioranal.SubjectPsychometricCurveFittedDifferential.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarDifferential2lp.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarFractional2lp.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarDifferential3lp.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarFractional3lp.populate(**arguments)
+        
     if runround == 4:
         behavioranal.SessionPerformance.populate(**arguments)
 
@@ -101,6 +106,10 @@ def populatemytables_core(arguments,runround):
         behavioranal.SubjectPsychometricCurveBoxCarDifferential.populate(**arguments)
         behavioranal.SubjectPsychometricCurveFittedFractional.populate(**arguments)
         behavioranal.SubjectPsychometricCurveFittedDifferential.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarDifferential2lp.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarFractional2lp.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarDifferential3lp.populate(**arguments)
+        behavioranal.SubjectPolarPsyCurveBoxCarFractional3lp.populate(**arguments)
     if runround == 4:
         behavioranal.SessionPerformance.populate(**arguments)
         
@@ -131,6 +140,9 @@ def populatemytables(paralel = True, cores = 9,del_tables = True):
                              behavioranal.SubjectPsychometricCurveBoxCarDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectPsychometricCurveFittedFractional() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectPsychometricCurveFittedDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPolarPsyCurveBoxCarDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPolarPsyCurveBoxCarFractional() & 'subject_id = "' + str(subject_id_now)+'"',
+
                              behavioranal.SessionPerformance() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectFittedChoiceCoefficientsVSTime() & 'subject_id = "' + str(subject_id_now)+'"',
                              ]
@@ -301,7 +313,7 @@ def populatebehavior_core(IDs = None):
                             session_time = df_behavior_session['PC-TIME'][trial_start_idxs[0]]
                             if session.setup_name.lower() in ['day1','tower-2','day2-7','day_1','real foraging']:
                                 setupname = 'Training-Tower-2'
-                            elif session.setup_name.lower() in ['tower-3','tower-3beh',' tower-3','+']:
+                            elif session.setup_name.lower() in ['tower-3','tower-3beh',' tower-3','+','tower 3']:
                                 setupname = 'Training-Tower-3'
                             elif session.setup_name.lower() in ['tower-1']:
                                 setupname = 'Training-Tower-1'
@@ -355,301 +367,306 @@ def populatebehavior_core(IDs = None):
                                 df_behavior_trial = df_behavior_session[trial_start_idx:trial_end_idx+1]
                                 #Trials without GoCue  are skipped
                                 if len(df_behavior_trial['PC-TIME'][(df_behavior_trial['MSG'] == 'GoCue') & (df_behavior_trial['TYPE'] == 'TRANSITION')]) > 0:
-                
-                                    trial_start_time = df_behavior_session['PC-TIME'][trial_start_idx].to_pydatetime() - session_start_time
-                                    trial_stop_time = df_behavior_session['PC-TIME'][trial_end_idx].to_pydatetime() - session_start_time
-                                    trial_start_time_decimal = decimal.Decimal(trial_start_time.total_seconds()).quantize(decimal.Decimal('.0001'))
-                                    if len(experiment.SessionTrial() & 'session =' + str(session_now['session'][0]) & 'trial_start_time ="' + str(trial_start_time_decimal) + '"') == 0 and trial_start_time != prevtrialstarttime:# importing if this trial is not already imported
-                                        prevtrialstarttime = trial_start_time
-                                        trialnum = len(experiment.SessionTrial() & 'session =' + str(session_now['session'][0]) & 'subject_id = "' + str(subject_id_now) + '"') + 1
-                                        unique_trialnum = len(experiment.SessionTrial() & 'subject_id =' + str(subject_id_now) ) + 1 
-                                        sessiontrialdata={
-                                                'subject_id':subject_id_now,
-                                                'session':session_now['session'][0],
-                                                'trial': trialnum,
-                                                'trial_uid': unique_trialnum, # unique across sessions/animals
-                                                'trial_start_time': trial_start_time.total_seconds(), # (s) relative to session beginning 
-                                                'trial_stop_time': trial_stop_time.total_seconds()# (s) relative to session beginning 
-                                                }
-                                        experiment.SessionTrial().insert1(sessiontrialdata, allow_direct_insert=True)
-                                        if 'Block_number' in df_behavior_session.columns and np.isnan(df_behavior_trial['Block_number'].to_list()[0]):
-                                            if np.isnan(blocknum_local_prev):
-                                                blocknum_local = 0
-                                            else:
-                                                blocknum_local = blocknum_local_prev
-                                        elif 'Block_number' in df_behavior_session.columns:
-                                            blocknum_local = int(df_behavior_trial['Block_number'].to_list()[0])-1
-                                            blocknum_local_prev  = blocknum_local
-                                            
-                                        if 'Block_number' in df_behavior_session.columns:# and not np.isnan(df_behavior_trial['Block_number'].to_list()[0]):
-                                            p_reward_left = decimal.Decimal(df_behavior_trial['var:reward_probabilities_L'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
-                                            p_reward_right = decimal.Decimal(df_behavior_trial['var:reward_probabilities_R'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
-                                            if lickportnum == 3:
-                                                p_reward_middle = decimal.Decimal(df_behavior_trial['var:reward_probabilities_M'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
-                                                
-                                            if len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) == 0:
-                                                p_reward_right_previous = -1
-                                                p_reward_left_previous = -1
-                                                if lickportnum == 3:
-                                                    p_reward_middle_previous = -1
-                                            else:
-                                                prevblock =  (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])).fetch('block').max()
-                                                if lickportnum == 3:
-                                                    probs = (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0]) & 'block = ' + str(prevblock)).fetch('p_reward_left','p_reward_right','p_reward_middle')
-                                                    p_reward_right_previous  = probs[1][0]
-                                                    p_reward_left_previous  = probs[0][0]
-                                                    p_reward_middle_previous  = probs[2][0]
-                                                else:
-                                                    probs = (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0]) & 'block = ' + str(prevblock)).fetch('p_reward_left','p_reward_right')
-                                                    p_reward_right_previous  = probs[1][0]
-                                                    p_reward_left_previous  = probs[0][0]
-                                                    
-                                            itsanewblock = False
-                                            if lickportnum == 3:
-                                                if p_reward_left != p_reward_left_previous or p_reward_right != p_reward_right_previous or p_reward_middle != p_reward_middle_previous:
-                                                    itsanewblock = True
-                                            else:
-                                                if p_reward_left != p_reward_left_previous or p_reward_right != p_reward_right_previous:
-                                                    itsanewblock = True
-                                                
-                                            if itsanewblock:
-                                                if len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) == 0:
-                                                    blocknum = 1
-                                                else:
-                                                    blocknum = len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) + 1
-                                                if blocknum>100:
-                                                    print('waiting.. there are way too many blocks')
-                                                    #timer.sleep(1000)
-                                                unique_blocknum = len(experiment.SessionBlock() & 'subject_id =' + str(subject_id_now)) + 1
-                                                block_start_time = trial_start_time.total_seconds()
-                                                p_reward_left = p_reward_left
-                                                p_reward_right = p_reward_right
-                                                sessionblockdata={
+                                    try:
+                                        trial_start_time = df_behavior_session['PC-TIME'][trial_start_idx].to_pydatetime() - session_start_time
+                                        trial_stop_time = df_behavior_session['PC-TIME'][trial_end_idx].to_pydatetime() - session_start_time
+                                        trial_start_time_decimal = decimal.Decimal(trial_start_time.total_seconds()).quantize(decimal.Decimal('.0001'))
+                                        if len(experiment.SessionTrial() & 'session =' + str(session_now['session'][0]) & 'trial_start_time ="' + str(trial_start_time_decimal) + '"') == 0 and trial_start_time != prevtrialstarttime:# importing if this trial is not already imported
+                                            prevtrialstarttime = trial_start_time
+                                            trialnum = len(experiment.SessionTrial() & 'session =' + str(session_now['session'][0]) & 'subject_id = "' + str(subject_id_now) + '"') + 1
+                                            unique_trialnum = len(experiment.SessionTrial() & 'subject_id =' + str(subject_id_now) ) + 1 
+                                            sessiontrialdata={
                                                     'subject_id':subject_id_now,
                                                     'session':session_now['session'][0],
-                                                    'block': blocknum,
-                                                    'block_uid': unique_blocknum, # unique across sessions/animals
-                                                    'block_start_time': block_start_time, # (s) relative to session beginning 
-                                                    'p_reward_left' : p_reward_left,
-                                                    'p_reward_right' : p_reward_right
+                                                    'trial': trialnum,
+                                                    'trial_uid': unique_trialnum, # unique across sessions/animals
+                                                    'trial_start_time': trial_start_time.total_seconds(), # (s) relative to session beginning 
+                                                    'trial_stop_time': trial_stop_time.total_seconds()# (s) relative to session beginning 
                                                     }
+                                            experiment.SessionTrial().insert1(sessiontrialdata, allow_direct_insert=True)
+                                            if 'Block_number' in df_behavior_session.columns and np.isnan(df_behavior_trial['Block_number'].to_list()[0]):
+                                                if np.isnan(blocknum_local_prev):
+                                                    blocknum_local = 0
+                                                else:
+                                                    blocknum_local = blocknum_local_prev
+                                            elif 'Block_number' in df_behavior_session.columns:
+                                                blocknum_local = int(df_behavior_trial['Block_number'].to_list()[0])-1
+                                                blocknum_local_prev  = blocknum_local
+                                                
+                                            if 'Block_number' in df_behavior_session.columns:# and not np.isnan(df_behavior_trial['Block_number'].to_list()[0]):
+                                                p_reward_left = decimal.Decimal(df_behavior_trial['var:reward_probabilities_L'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
+                                                p_reward_right = decimal.Decimal(df_behavior_trial['var:reward_probabilities_R'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
                                                 if lickportnum == 3:
-                                                    sessionblockdata['p_reward_middle'] = p_reward_middle
+                                                    p_reward_middle = decimal.Decimal(df_behavior_trial['var:reward_probabilities_M'].to_list()[0][blocknum_local]).quantize(decimal.Decimal('.001'))
                                                     
-                                                experiment.SessionBlock().insert1(sessionblockdata, allow_direct_insert=True)
-                                                #print('new block added: ' + str (block_start_time))
-                                            blocknum_now = (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])).fetch('block').max()
-                                        else:
-                                            blocknum_now = None
-                                        #%%                                            
-                                        if any((df_behavior_trial['MSG'] == 'Choice_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
-                                            trial_choice = 'left'
-                                        elif any((df_behavior_trial['MSG'] == 'Choice_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')): 
-                                            trial_choice = 'right'
-                                        elif any((df_behavior_trial['MSG'] == 'Choice_M') & (df_behavior_trial['TYPE'] == 'TRANSITION')): 
-                                            trial_choice = 'middle'
-                                        else:
-                                            trial_choice = 'none'
-                                        #%
-                                        time_TrialStart = df_behavior_session['PC-TIME'][trial_start_idx]
-                                        time_GoCue = df_behavior_trial['PC-TIME'][(df_behavior_trial['MSG'] == 'GoCue') & (df_behavior_trial['TYPE'] == 'TRANSITION')]
-                                        time_lick_left = df_behavior_trial['PC-TIME'][(df_behavior_trial['+INFO'] == channel_L)]
-                                        time_lick_right = df_behavior_trial['PC-TIME'][(df_behavior_trial['+INFO'] == channel_R)]
-                                        if lickportnum == 3:
-                                            time_lick_middle = df_behavior_trial['PC-TIME'][(df_behavior_trial['+INFO'] == channel_M)]
-                                            if any(time_lick_left.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)) or any(time_lick_right.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)) or any(time_lick_middle.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)):
-                                                early_lick = 'early'
+                                                if len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) == 0:
+                                                    p_reward_right_previous = -1
+                                                    p_reward_left_previous = -1
+                                                    if lickportnum == 3:
+                                                        p_reward_middle_previous = -1
+                                                else:
+                                                    prevblock =  (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])).fetch('block').max()
+                                                    if lickportnum == 3:
+                                                        probs = (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0]) & 'block = ' + str(prevblock)).fetch('p_reward_left','p_reward_right','p_reward_middle')
+                                                        p_reward_right_previous  = probs[1][0]
+                                                        p_reward_left_previous  = probs[0][0]
+                                                        p_reward_middle_previous  = probs[2][0]
+                                                    else:
+                                                        probs = (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0]) & 'block = ' + str(prevblock)).fetch('p_reward_left','p_reward_right')
+                                                        p_reward_right_previous  = probs[1][0]
+                                                        p_reward_left_previous  = probs[0][0]
+                                                        
+                                                itsanewblock = False
+                                                if lickportnum == 3:
+                                                    if p_reward_left != p_reward_left_previous or p_reward_right != p_reward_right_previous or p_reward_middle != p_reward_middle_previous:
+                                                        itsanewblock = True
+                                                else:
+                                                    if p_reward_left != p_reward_left_previous or p_reward_right != p_reward_right_previous:
+                                                        itsanewblock = True
+                                                    
+                                                if itsanewblock:
+                                                    if len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) == 0:
+                                                        blocknum = 1
+                                                    else:
+                                                        blocknum = len(experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])) + 1
+                                                    if blocknum>100:
+                                                        print('waiting.. there are way too many blocks')
+                                                        #timer.sleep(1000)
+                                                    unique_blocknum = len(experiment.SessionBlock() & 'subject_id =' + str(subject_id_now)) + 1
+                                                    block_start_time = trial_start_time.total_seconds()
+                                                    p_reward_left = p_reward_left
+                                                    p_reward_right = p_reward_right
+                                                    sessionblockdata={
+                                                        'subject_id':subject_id_now,
+                                                        'session':session_now['session'][0],
+                                                        'block': blocknum,
+                                                        'block_uid': unique_blocknum, # unique across sessions/animals
+                                                        'block_start_time': block_start_time, # (s) relative to session beginning 
+                                                        'p_reward_left' : p_reward_left,
+                                                        'p_reward_right' : p_reward_right
+                                                        }
+                                                    if lickportnum == 3:
+                                                        sessionblockdata['p_reward_middle'] = p_reward_middle
+                                                        
+                                                    experiment.SessionBlock().insert1(sessionblockdata, allow_direct_insert=True)
+                                                    #print('new block added: ' + str (block_start_time))
+                                                blocknum_now = (experiment.SessionBlock() & 'subject_id = "'+str(subject_id_now)+'"' & 'session = ' + str(session_now['session'][0])).fetch('block').max()
                                             else:
-                                                early_lick = 'no early'
-                                            #% outcome
-                                            if any((df_behavior_trial['MSG'] == 'Reward_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')) or any((df_behavior_trial['MSG'] == 'Reward_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')) or any((df_behavior_trial['MSG'] == 'Reward_M') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
-                                                outcome = 'hit'
-                                            elif trial_choice == 'none':
-                                                outcome = 'ignore'
+                                                blocknum_now = None
+                                            #%%                                            
+                                            if any((df_behavior_trial['MSG'] == 'Choice_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
+                                                trial_choice = 'left'
+                                            elif any((df_behavior_trial['MSG'] == 'Choice_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')): 
+                                                trial_choice = 'right'
+                                            elif any((df_behavior_trial['MSG'] == 'Choice_M') & (df_behavior_trial['TYPE'] == 'TRANSITION')): 
+                                                trial_choice = 'middle'
                                             else:
-                                                outcome = 'miss'
-                                        else:
-                                            
-                                            if any(time_lick_left.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)) or any(time_lick_right.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)):
-                                                early_lick = 'early'
+                                                trial_choice = 'none'
+                                            #%
+                                            time_TrialStart = df_behavior_session['PC-TIME'][trial_start_idx]
+                                            time_GoCue = df_behavior_trial['PC-TIME'][(df_behavior_trial['MSG'] == 'GoCue') & (df_behavior_trial['TYPE'] == 'TRANSITION')]
+                                            time_lick_left = df_behavior_trial['PC-TIME'][(df_behavior_trial['+INFO'] == channel_L)]
+                                            time_lick_right = df_behavior_trial['PC-TIME'][(df_behavior_trial['+INFO'] == channel_R)]
+                                            if lickportnum == 3:
+                                                time_lick_middle = df_behavior_trial['PC-TIME'][(df_behavior_trial['+INFO'] == channel_M)]
+                                                if any(time_lick_left.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)) or any(time_lick_right.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)) or any(time_lick_middle.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)):
+                                                    early_lick = 'early'
+                                                else:
+                                                    early_lick = 'no early'
+                                                #% outcome
+                                                if any((df_behavior_trial['MSG'] == 'Reward_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')) or any((df_behavior_trial['MSG'] == 'Reward_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')) or any((df_behavior_trial['MSG'] == 'Reward_M') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
+                                                    outcome = 'hit'
+                                                elif trial_choice == 'none':
+                                                    outcome = 'ignore'
+                                                else:
+                                                    outcome = 'miss'
                                             else:
-                                                early_lick = 'no early'
-                                            #% outcome
-                                            if any((df_behavior_trial['MSG'] == 'Reward_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')) or any((df_behavior_trial['MSG'] == 'Reward_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
-                                                outcome = 'hit'
-                                            elif trial_choice == 'none':
-                                                outcome = 'ignore'
-                                            else:
-                                                outcome = 'miss'
-                                        #%
-                                        behaviortrialdata = {
-                                                'subject_id': subject_id_now,
-                                                'session': session_now['session'][0],
-                                                'trial': trialnum,
-                                                'task': task,
-                                                'task_protocol': task_protocol,
-                                                #'trial_instruct':,
-                                                'trial_choice': trial_choice,
-                                                'early_lick':early_lick,
-                                                'outcome': outcome
-                                                }
-                                        if blocknum_now:
-                                            behaviortrialdata['block'] = blocknum_now
-                                        experiment.BehaviorTrial().insert1(behaviortrialdata, allow_direct_insert=True)
-                                        ##% 
-                                        trialnotedata = None
-                                        #%% add autowater
-                                        if any((df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_L')) or any((df_behavior_trial['TYPE'] == 'STATE') &(df_behavior_trial['MSG'] == 'Auto_Water_R')) or any((df_behavior_trial['TYPE'] == 'STATE') &(df_behavior_trial['MSG'] == 'Auto_Water_M')):
-                                            #%%
-                                            Lidx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_L')
-                                            Lidx = Lidx.idxmax()
-                                            l_aw_time = float(df_behavior_trial['+INFO'][Lidx])
-                                            Ridx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_R')
-                                            Ridx = Ridx.idxmax()
-                                            r_aw_time = float(df_behavior_trial['+INFO'][Ridx])
-                                            Midx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_M')
-                                            if any(Midx):
-                                                Midx = Midx.idxmax()
-                                                m_aw_time=float(df_behavior_trial['+INFO'][Midx])
-                                            else:
-                                                m_aw_time = 0
-                                            if r_aw_time >.001 and l_aw_time > .001 and m_aw_time > .001:
-                                                trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'autowater',
-                                                        'trial_note': 'left and right and middle'
-                                                        }
-                                            elif r_aw_time>.001 and l_aw_time>.001:
-                                                trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'autowater',
-                                                        'trial_note': 'left and right'
-                                                        }
-                                            elif r_aw_time > .001 and m_aw_time > .001:
-                                                trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'autowater',
-                                                        'trial_note': 'right and middle'
-                                                        }
-                                            elif m_aw_time > .001 and l_aw_time > .001:
-                                                trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'autowater',
-                                                        'trial_note': 'left and middle'
-                                                        }
-                                            elif l_aw_time>.001:
-                                                trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'autowater',
-                                                        'trial_note': 'left'
-                                                        }
-                                            elif r_aw_time > .001:
-                                                trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'autowater',
-                                                        'trial_note': 'right'
-                                                        }
-                                            elif m_aw_time > .001:
-                                                trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'autowater',
-                                                        'trial_note': 'middle'
-                                                        }
-                                            else:
-                                                trialnotedata = None # autowater was on but there was no water due to the probabilities
-    #%%
-                                        if trialnotedata:
-                                            experiment.TrialNote().insert1(trialnotedata, allow_direct_insert=True)
-                                        #%% add random seed start
-                                        trialnotedata = None
-                                        if any(df_behavior_trial['MSG'] == 'Random seed:'):
-                                            seedidx = (df_behavior_trial['MSG'] == 'Random seed:').idxmax() + 1
-                                            trialnotedata = {
-                                                        'subject_id': subject_id_now,
-                                                        'session': session_now['session'][0],
-                                                        'trial': trialnum,
-                                                        'trial_note_type': 'random_seed_start',
-                                                        'trial_note': str(df_behavior_trial['MSG'][seedidx])
-                                                        }
-                                            experiment.TrialNote().insert1(trialnotedata, allow_direct_insert=True)
-                                        #%% add watervalve data
-                                        watervalvedata ={
-                                                'subject_id': subject_id_now,
-                                                'session': session_now['session'][0],
-                                                'trial': trialnum,
-                                                }
-                                        if 'var_motor:LickPort_Lateral_pos' in df_behavior_trial.keys():
-                                            watervalvedata['water_valve_lateral_pos'] = df_behavior_trial['var_motor:LickPort_Lateral_pos'].values[0]
-                                        if 'var_motor:LickPort_RostroCaudal_pos' in df_behavior_trial.keys():
-                                            watervalvedata['water_valve_rostrocaudal_pos']= df_behavior_trial['var_motor:LickPort_RostroCaudal_pos'].values[0]
-                                        if 'var:ValveOpenTime_L' in df_behavior_trial.keys():
-                                            watervalvedata['water_valve_time_left'] = df_behavior_trial['var:ValveOpenTime_L'].values[0]
-                                        if 'var:ValveOpenTime_R' in df_behavior_trial.keys():
-                                            watervalvedata['water_valve_time_right'] = df_behavior_trial['var:ValveOpenTime_R'].values[0]
-                                        if 'var:ValveOpenTime_M' in df_behavior_trial.keys():
-                                            watervalvedata['water_valve_time_middle'] = df_behavior_trial['var:ValveOpenTime_M'].values[0]      
-                                        experiment.WaterValveData().insert1(watervalvedata, allow_direct_insert=True)
-                                        #% add Go Cue
-                                        GoCueTimes = (time_GoCue.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
-                                        trialeventdatas = list()
-                                        for trial_event_i,trial_event_time  in enumerate(GoCueTimes):
-                                            trialeventdatas.append({
+                                                
+                                                if any(time_lick_left.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)) or any(time_lick_right.to_numpy() - time_GoCue.to_numpy() <np.timedelta64(0)):
+                                                    early_lick = 'early'
+                                                else:
+                                                    early_lick = 'no early'
+                                                #% outcome
+                                                if any((df_behavior_trial['MSG'] == 'Reward_R') & (df_behavior_trial['TYPE'] == 'TRANSITION')) or any((df_behavior_trial['MSG'] == 'Reward_L') & (df_behavior_trial['TYPE'] == 'TRANSITION')):
+                                                    outcome = 'hit'
+                                                elif trial_choice == 'none':
+                                                    outcome = 'ignore'
+                                                else:
+                                                    outcome = 'miss'
+                                            #%
+                                            behaviortrialdata = {
                                                     'subject_id': subject_id_now,
                                                     'session': session_now['session'][0],
                                                     'trial': trialnum,
-                                                    'trial_event_id': trial_event_i,
-                                                    'trial_event_type': 'go',
-                                                    'trial_event_time': trial_event_time,
-                                                    'duration': 0, #for a go cue
-                                                    })
-                                        experiment.TrialEvent().insert(trialeventdatas, allow_direct_insert=True)
-                                        #% add licks
-                                        actioneventdatas = list()
-                                        LeftLickTimes = (time_lick_left.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
-                                        RightLickTimes = (time_lick_right.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
-                                        for action_event_time in LeftLickTimes:
-                                            actioneventdatas.append({
+                                                    'task': task,
+                                                    'task_protocol': task_protocol,
+                                                    #'trial_instruct':,
+                                                    'trial_choice': trial_choice,
+                                                    'early_lick':early_lick,
+                                                    'outcome': outcome
+                                                    }
+                                            if blocknum_now:
+                                                behaviortrialdata['block'] = blocknum_now
+                                            experiment.BehaviorTrial().insert1(behaviortrialdata, allow_direct_insert=True)
+                                            ##% 
+                                            trialnotedata = None
+                                            #%% add autowater
+                                            if any((df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_L')) or any((df_behavior_trial['TYPE'] == 'STATE') &(df_behavior_trial['MSG'] == 'Auto_Water_R')) or any((df_behavior_trial['TYPE'] == 'STATE') &(df_behavior_trial['MSG'] == 'Auto_Water_M')):
+                                                #%%
+                                                Lidx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_L')
+                                                Lidx = Lidx.idxmax()
+                                                l_aw_time = float(df_behavior_trial['+INFO'][Lidx])
+                                                Ridx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_R')
+                                                Ridx = Ridx.idxmax()
+                                                r_aw_time = float(df_behavior_trial['+INFO'][Ridx])
+                                                Midx = (df_behavior_trial['TYPE'] == 'STATE') & (df_behavior_trial['MSG'] == 'Auto_Water_M')
+                                                if any(Midx):
+                                                    Midx = Midx.idxmax()
+                                                    m_aw_time=float(df_behavior_trial['+INFO'][Midx])
+                                                else:
+                                                    m_aw_time = 0
+                                                if r_aw_time >.001 and l_aw_time > .001 and m_aw_time > .001:
+                                                    trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'autowater',
+                                                            'trial_note': 'left and right and middle'
+                                                            }
+                                                elif r_aw_time>.001 and l_aw_time>.001:
+                                                    trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'autowater',
+                                                            'trial_note': 'left and right'
+                                                            }
+                                                elif r_aw_time > .001 and m_aw_time > .001:
+                                                    trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'autowater',
+                                                            'trial_note': 'right and middle'
+                                                            }
+                                                elif m_aw_time > .001 and l_aw_time > .001:
+                                                    trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'autowater',
+                                                            'trial_note': 'left and middle'
+                                                            }
+                                                elif l_aw_time>.001:
+                                                    trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'autowater',
+                                                            'trial_note': 'left'
+                                                            }
+                                                elif r_aw_time > .001:
+                                                    trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'autowater',
+                                                            'trial_note': 'right'
+                                                            }
+                                                elif m_aw_time > .001:
+                                                    trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'autowater',
+                                                            'trial_note': 'middle'
+                                                            }
+                                                else:
+                                                    trialnotedata = None # autowater was on but there was no water due to the probabilities
+        #%%
+                                            if trialnotedata:
+                                                experiment.TrialNote().insert1(trialnotedata, allow_direct_insert=True)
+                                            #%% add random seed start
+                                            trialnotedata = None
+                                            if any(df_behavior_trial['MSG'] == 'Random seed:'):
+                                                seedidx = (df_behavior_trial['MSG'] == 'Random seed:').idxmax() + 1
+                                                trialnotedata = {
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'trial_note_type': 'random_seed_start',
+                                                            'trial_note': str(df_behavior_trial['MSG'][seedidx])
+                                                            }
+                                                experiment.TrialNote().insert1(trialnotedata, allow_direct_insert=True)
+                                            #%% add watervalve data
+                                            watervalvedata ={
                                                     'subject_id': subject_id_now,
                                                     'session': session_now['session'][0],
                                                     'trial': trialnum,
-                                                    'action_event_id':len(actioneventdatas)+1,
-                                                    'action_event_time':action_event_time,
-                                                    'action_event_type': 'left lick'
-                                                    })
-                                        for action_event_time in RightLickTimes:
-                                            actioneventdatas.append({
-                                                    'subject_id': subject_id_now,
-                                                    'session': session_now['session'][0],
-                                                    'trial': trialnum,
-                                                    'action_event_id':len(actioneventdatas)+1,
-                                                    'action_event_time':action_event_time,
-                                                    'action_event_type': 'right lick'
-                                                    })
-                                        if lickportnum == 3:
-                                            MiddleLickTimes = (time_lick_middle.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
-                                            for action_event_time in MiddleLickTimes:
+                                                    }
+                                            if 'var_motor:LickPort_Lateral_pos' in df_behavior_trial.keys():
+                                                watervalvedata['water_valve_lateral_pos'] = df_behavior_trial['var_motor:LickPort_Lateral_pos'].values[0]
+                                            if 'var_motor:LickPort_RostroCaudal_pos' in df_behavior_trial.keys():
+                                                watervalvedata['water_valve_rostrocaudal_pos']= df_behavior_trial['var_motor:LickPort_RostroCaudal_pos'].values[0]
+                                            if 'var:ValveOpenTime_L' in df_behavior_trial.keys():
+                                                watervalvedata['water_valve_time_left'] = df_behavior_trial['var:ValveOpenTime_L'].values[0]
+                                            if 'var:ValveOpenTime_R' in df_behavior_trial.keys():
+                                                watervalvedata['water_valve_time_right'] = df_behavior_trial['var:ValveOpenTime_R'].values[0]
+                                            if 'var:ValveOpenTime_M' in df_behavior_trial.keys():
+                                                watervalvedata['water_valve_time_middle'] = df_behavior_trial['var:ValveOpenTime_M'].values[0]      
+                                            experiment.WaterValveData().insert1(watervalvedata, allow_direct_insert=True)
+                                            #% add Go Cue
+                                            GoCueTimes = (time_GoCue.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
+                                            trialeventdatas = list()
+                                            for trial_event_i,trial_event_time  in enumerate(GoCueTimes):
+                                                trialeventdatas.append({
+                                                        'subject_id': subject_id_now,
+                                                        'session': session_now['session'][0],
+                                                        'trial': trialnum,
+                                                        'trial_event_id': trial_event_i,
+                                                        'trial_event_type': 'go',
+                                                        'trial_event_time': trial_event_time,
+                                                        'duration': 0, #for a go cue
+                                                        })
+    
+                                            experiment.TrialEvent().insert(trialeventdatas, allow_direct_insert=True)
+    
+                                            #% add licks
+                                            actioneventdatas = list()
+                                            LeftLickTimes = (time_lick_left.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
+                                            RightLickTimes = (time_lick_right.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
+                                            for action_event_time in LeftLickTimes:
                                                 actioneventdatas.append({
                                                         'subject_id': subject_id_now,
                                                         'session': session_now['session'][0],
                                                         'trial': trialnum,
                                                         'action_event_id':len(actioneventdatas)+1,
                                                         'action_event_time':action_event_time,
-                                                        'action_event_type': 'middle lick'
+                                                        'action_event_type': 'left lick'
                                                         })
-                                            
-                                        if actioneventdatas:
-                                            experiment.ActionEvent().insert(actioneventdatas, allow_direct_insert=True)
+                                            for action_event_time in RightLickTimes:
+                                                actioneventdatas.append({
+                                                        'subject_id': subject_id_now,
+                                                        'session': session_now['session'][0],
+                                                        'trial': trialnum,
+                                                        'action_event_id':len(actioneventdatas)+1,
+                                                        'action_event_time':action_event_time,
+                                                        'action_event_type': 'right lick'
+                                                        })
+                                            if lickportnum == 3:
+                                                MiddleLickTimes = (time_lick_middle.to_numpy() - time_TrialStart.to_datetime64())/np.timedelta64(1,'s')
+                                                for action_event_time in MiddleLickTimes:
+                                                    actioneventdatas.append({
+                                                            'subject_id': subject_id_now,
+                                                            'session': session_now['session'][0],
+                                                            'trial': trialnum,
+                                                            'action_event_id':len(actioneventdatas)+1,
+                                                            'action_event_time':action_event_time,
+                                                            'action_event_type': 'middle lick'
+                                                            })
+                                                
+                                            if actioneventdatas:
+                                                experiment.ActionEvent().insert(actioneventdatas, allow_direct_insert=True)
+                                    except:
+                                        print('trial couldn''t be exported')
+                                        print(sessiontrialdata)
