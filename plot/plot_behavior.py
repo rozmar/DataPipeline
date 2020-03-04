@@ -1112,11 +1112,13 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
 
 def plot_tuning_curve_change_during_block(wr_name = 'FOR02',minsession = 8,mintrialnum = 20,max_bias = .5,bootstrapnum = 100):# TODO: FINISH this one
     #%%
-    wr_name = 'FOR01'
-    minsession = 8
-    mintrialnum = 30
-    max_bias = .5
-    bootstrapnum = 100
+# =============================================================================
+#     wr_name = 'FOR01'
+#     minsession = 8
+#     mintrialnum = 30
+#     max_bias = .5
+#     bootstrapnum = 100
+# =============================================================================
     allslopes = list()
     meanslopes = list()
     slopes_ci = list()

@@ -9,10 +9,41 @@ import matplotlib.pyplot as plt
 import decimal
 
 
-
+#%%
+subjects = ['FOR09','FOR10','FOR15','FOR17','FOR18','FOR19','FOR20','HC37','HC38']
+valuetype = 'fractional'
+lickportnum = 3
+for wr_name in subjects:
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {'subject_id':subject_id}
+    if valuetype == 'fractional':
+        if lickportnum == 2:
+            PsyCurveData =  (behavioranal.SubjectPolarPsyCurveBoxCarFractional2lp()&key).fetch1()
+        else:
+            PsyCurveData =  (behavioranal.SubjectPolarPsyCurveBoxCarFractional3lp()&key).fetch1()
+    else:
+        if lickportnum == 2:
+            PsyCurveData =  (behavioranal.SubjectPolarPsyCurveBoxCarDifferential2lp()&key).fetch1()
+        else:
+            PsyCurveData =  (behavioranal.SubjectPolarPsyCurveBoxCarDifferential3lp()&key).fetch1()
+    
+    PsyCurveFractional3lp =  (behavioranal.SubjectPolarPsyCurveBoxCarFractional3lp()&key).fetch1()
+    fig=plt.figure()
+    ax1=fig.add_axes([0,0,.8,.8])
+    ax1.errorbar(PsyCurveData['reward_ratio_mean'],PsyCurveData['choice_ratio_mean'],PsyCurveData['choice_ratio_sd'],PsyCurveData['reward_ratio_sd'],'ko-') 
+    ax1.set_xlim([-np.pi-.5,np.pi+.5])
+    ax1.set_ylim([-np.pi-.5,np.pi+.5])
+    ax1.set_yticks([-np.pi/3*2,0,np.pi/3*2])
+    ax1.set_xticks([-np.pi/3*2,0,np.pi/3*2])
+    ax1.set_xticklabels(['Left','Middle','Right'])
+    ax1.set_yticklabels(['Left','Middle','Right'])
+    ax1.set_xlabel('Fractional income in the last 10 trials')
+    ax1.set_ylabel('Choice')
+    ax1.set_title(wr_name)
+    #break
 
 #%% 
-df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
+df_subject_wr=pd.DataFrame(behavioranal.SessionTrainingType()*lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails())
 subject_names = df_subject_wr['water_restriction_number'].unique()
 subject_names.sort()
 fig=plt.figure()
@@ -27,17 +58,21 @@ for i,wr_name in enumerate(subject_names):
             }
     
     
-    local_fractional_income = (behavioranal.SessionPsychometricDataFitted()&key).fetch('local_fractional_income')
+    local_fractional_income = (behavioranal.SessionPsychometricDataFitted()&key).fetch('local_fractional_income_right')
     choice_local_fractional_income = (behavioranal.SessionPsychometricDataFitted()&key).fetch('choice_local_fractional_income')
     slope=list()
     constant = list()
     bias = list()
+    #%
     for income,choice in zip(local_fractional_income,choice_local_fractional_income):
-        out = scipy.optimize.curve_fit(lambda t,a,b: a*t+b,  income,  choice)
-        slope.append(out[0][0])
-        constant.append(out[0][1])
-        bias.append(out[0][0]*.5+out[0][1])
-    
+        try:
+            out = scipy.optimize.curve_fit(lambda t,a,b: a*t+b,  income,  choice)
+            slope.append(out[0][0])
+            constant.append(out[0][1])
+            bias.append(out[0][0]*.5+out[0][1])
+        except:
+            pass
+    #%
     slopes.append(np.asarray(slope))
     constants.append(np.asarray(constant))
     biases.append(np.asarray(bias))
@@ -504,10 +539,10 @@ ax_water = fig.add_axes([0,-1,1,.8])
 for i,subject in enumerate(subject_names):
     idx = df_subject_wr['water_restriction_number'] == subject
     water = df_subject_wr['session_water_earned'][idx]
-    ax_water.plot(range(1,len(water)+1),water.values,linewidth=len(subject_names)+1-i)
+    ax_water.plot(range(1,len(water)+1),water.values)#,linewidth=len(subject_names)+1-i)
 ax_water.set_ylabel('Consumed water (ml)')
 ax_water.set_xlabel('Session number')
-ax_water.set_ylim(0, .6)
+ax_water.set_ylim(0, 1.5)
 ax_water.legend(subject_names)
 ax_water.set_title('Water consumption over training')
 # show task type over time
@@ -538,8 +573,8 @@ for wr_name in subject_names:
         df_earlylick = pd.DataFrame((experiment.BehaviorTrial()&key).fetch('early_lick'))
         early_lick_rate = (df_earlylick == 'early').values.sum()/trialnum
         earlylickrates.append(early_lick_rate)
-    ax_trialnum.plot(range(1,len(trialnums)+1),trialnums,linewidth=len(subject_names)+1-i)
-    ax_earlylick.plot(range(1,len(earlylickrates)+1),earlylickrates,linewidth=len(subject_names)+1-i)
+    ax_trialnum.plot(range(1,len(trialnums)+1),trialnums)#,linewidth=len(subject_names)+1-i)
+    ax_earlylick.plot(range(1,len(earlylickrates)+1),earlylickrates)#,linewidth=len(subject_names)+1-i)
 ax_trialnum.legend(subject_names)
 ax_trialnum.set_xlabel('Session number')
 ax_trialnum.set_ylabel('Number of trials')
