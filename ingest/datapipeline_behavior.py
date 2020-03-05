@@ -31,7 +31,7 @@ def populatemytables_core_paralel(arguments,runround):
         behavioranal.BlockRewardRatio().populate(**arguments)  
         behavioranal.BlockChoiceRatio().populate(**arguments)  
         behavioranal.BlockAutoWaterCount().populate(**arguments)  
-        #behavioranal.SessionBlockSwitchChoices().populate(**arguments)   #OBSOLETE
+        behavioranal.SessionBlockSwitchChoices().populate(**arguments)   #OBSOLETE
         # behavioranal.SessionFittedChoiceCoefficients().populate(**arguments) #Not up to date
         behavioranal.SubjectFittedChoiceCoefficientsRNRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRC.populate(**arguments)
@@ -80,7 +80,7 @@ def populatemytables_core(arguments,runround):
         behavioranal.BlockRewardRatio().populate(**arguments)  
         behavioranal.BlockChoiceRatio().populate(**arguments)  
         behavioranal.BlockAutoWaterCount().populate(**arguments)  
-        #behavioranal.SessionBlockSwitchChoices().populate(**arguments)  #OBSOLETE
+        behavioranal.SessionBlockSwitchChoices().populate(**arguments)  #OBSOLETE
         #behavioranal.SessionFittedChoiceCoefficients().populate(**arguments) # Not up to date
         behavioranal.SubjectFittedChoiceCoefficientsRNRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRC.populate(**arguments)

@@ -12,7 +12,15 @@ import warnings
 import bootstrapped.bootstrap as bs
 import bootstrapped.stats_functions as bs_stats
 #%%
-
+def movingaverage(values, window):
+    if window >1:
+        weights = np.repeat(1.0, window)/window
+        sma = np.convolve(values, weights, 'same')
+        sma[:round(window/2)] = np.nan
+        sma[-round(window/2):] = np.nan
+    else:
+        sma = values
+    return sma
 
 def draw_bs_pairs_linreg(x, y, size=1): 
     """Perform pairs bootstrap for linear regression."""#from serhan aya
@@ -112,8 +120,31 @@ def plot_weight_water_early_lick(subjects = None):
     ax_earlylick.set_xlabel('Session number')
     ax_earlylick.set_ylabel('Early lick rate')
     ax_earlylick.set_title('Early lick rate during each session')
+   
+def plot_block_switches(wr_name = None,sessions = None, probability_change_direction = 1, lickport_num = 2,moving_n = 1,contrast_edges = [0,.1,.2], min_block_length = 30):
+    #%%
+# =============================================================================
+#     wr_name = None
+#     
+#     sessions = None
+#     min_block_length = 6
+#     moving_n = 1
+#     lickport_num = 2
+#     probability_change_direction = 1
+#     contrast_edges = [0,.1,.2]
+# =============================================================================
     
-def plot_block_switches(wr_name = None,sessions = None):
+    
+    if probability_change_direction >0:
+        multiplier = 1
+    else:
+        multiplier = -1
+    if lickport_num == 2:
+        task_protocol = 100
+    elif lickport_num == 3:
+        task_protocol = 101
+    trialnums = np.arange(-30,100)
+    
     if wr_name == None:
         key = dict()
         wr_name = 'All subjects'
@@ -123,46 +154,63 @@ def plot_block_switches(wr_name = None,sessions = None):
         
         print(subject_id)
     if sessions == None:
-        df_block_starts = pd.DataFrame(behavioranal.SessionBlockSwitchChoices() & 'session > 5' & key)
+        df_block_starts = pd.DataFrame(behavioranal.SessionBlockSwitchChoices()*behavioranal.SessionTrainingType() & 'session_task_protocol = {}'.format(task_protocol) & 'session > 5' & key)
         session_name = 'all sessions'
     elif len(sessions) == 1:
-        df_block_starts = pd.DataFrame(behavioranal.SessionBlockSwitchChoices() & 'session ='+str(sessions[0]) & key)
+        df_block_starts = pd.DataFrame(behavioranal.SessionBlockSwitchChoices()*behavioranal.SessionTrainingType() & 'session_task_protocol = {}'.format(task_protocol) & 'session ='+str(sessions[0]) & key)
         session_name = 'session '+str(sessions)
     else:
-        df_block_starts = pd.DataFrame(behavioranal.SessionBlockSwitchChoices() & 'session >='+str(np.min(sessions))& 'session <='+str(np.max(sessions)) & key)
+        df_block_starts = pd.DataFrame(behavioranal.SessionBlockSwitchChoices()*behavioranal.SessionTrainingType() & 'session_task_protocol = {}'.format(task_protocol) & 'session >='+str(np.min(sessions))& 'session <='+str(np.max(sessions)) & key)
         session_name = 'sessions '+str(np.min(sessions))+' to '+str(np.max(sessions))
-    contrast_edges = [.1,.25,.3]
+    
     bigchoicematrix = None
     p_r_change = None
     p_l_change = None
+    p_m_change = None
     p_r_next = None
     p_r_prev = None
+    p_l_next = None
+    p_l_prev = None
+    p_m_next = None
+    p_m_prev = None
     next_block_length = None
     for idx, line in df_block_starts.iterrows():
-        if len(line['p_r_change']) > 0:
+        if len(line['p_r_change']) > 0 :
             if bigchoicematrix is None:
-                bigchoicematrix = line['choices_matrix']        
-                p_r_change  = line['p_r_change']        
-                p_l_change  = line['p_l_change']  
-                next_block_length  = line['block_length_next']   
-                p_r_next  = line['p_r_next']   
-                p_r_prev  = line['p_r_prev']   
+                neededblocks = np.asarray(line['block_length_next'])>=min_block_length
+                bigchoicematrix = np.asarray(line['choices_matrix'])[neededblocks]  
+                p_r_change  = np.asarray(line['p_r_change'])[neededblocks]   
+                p_l_change  = np.asarray(line['p_l_change'])[neededblocks]  
+                p_m_change  = np.asarray(line['p_m_change'])[neededblocks] 
+                next_block_length  = np.asarray(line['block_length_next'])[neededblocks]   
+                p_r_next  = np.asarray(line['p_r_next'])[neededblocks]
+                p_r_prev  = np.asarray(line['p_r_prev'])[neededblocks]
+                p_l_next  = np.asarray(line['p_l_next'])[neededblocks]
+                p_l_prev  = np.asarray(line['p_l_prev'])[neededblocks]
+                p_m_next  = np.asarray(line['p_m_next'])[neededblocks]
+                p_m_prev  = np.asarray(line['p_m_prev'])[neededblocks]
             else:
-                bigchoicematrix = np.concatenate((bigchoicematrix,line['choices_matrix']))
-                p_r_change  =  np.concatenate((p_r_change,line['p_r_change']))
-                p_l_change  =  np.concatenate((p_l_change,line['p_l_change']))
-                next_block_length  =  np.concatenate((next_block_length,line['block_length_next']))       
-                p_r_next  =  np.concatenate((p_r_next,line['p_r_next']))       
-                p_r_prev  =  np.concatenate((p_r_prev,line['p_r_prev']))   
+                neededblocks = np.asarray(line['block_length_next'])>=min_block_length
+                bigchoicematrix = np.concatenate((bigchoicematrix,np.asarray(line['choices_matrix'])[neededblocks]))
+                p_r_change  =  np.concatenate((p_r_change,np.asarray(line['p_r_change'])[neededblocks]))
+                p_l_change  =  np.concatenate((p_l_change,np.asarray(line['p_l_change'])[neededblocks]))
+                p_m_change  =  np.concatenate((p_m_change,np.asarray(line['p_m_change'])[neededblocks]))
+                next_block_length  =  np.concatenate((next_block_length,np.asarray(line['block_length_next'])[neededblocks]))       
+                p_r_next  =  np.concatenate((p_r_next,np.asarray(line['p_r_next'])[neededblocks]))       
+                p_r_prev  =  np.concatenate((p_r_prev,np.asarray(line['p_r_prev'])[neededblocks]))   
+                p_l_next  =  np.concatenate((p_l_next,np.asarray(line['p_l_next'])[neededblocks]))       
+                p_l_prev  =  np.concatenate((p_l_prev,np.asarray(line['p_l_prev'])[neededblocks]))   
+                p_m_next  =  np.concatenate((p_m_next,np.asarray(line['p_m_next'])[neededblocks]))       
+                p_m_prev  =  np.concatenate((p_m_prev,np.asarray(line['p_m_prev'])[neededblocks]))   
     
     fig=plt.figure()
     ax1=fig.add_axes([0,0,.8,.8])
-    ax1.hist([p_r_change,p_l_change],40)
+    ax1.hist([p_r_change,p_l_change,p_m_change],np.arange(0,1,.05),color = ['b','r','g'])
     ylimedges = ax1.get_ylim()
     ax1.set_title('Contrast between blocks - Subject: '+wr_name+' - '+session_name)
     ax1.set_ylabel('Count of block switches')
     ax1.set_xlabel('Change in probability')
-    ax1.legend(['right lickport','left lickport','contrast groups'])
+    ax1.legend(['right lickport','left lickport','middle lickport'])
     ax1.plot(contrast_edges,np.ones(len(contrast_edges))*np.mean(ylimedges),'k|',markersize = 500)
     ax1.set_xlim(0,1)
     
@@ -172,51 +220,120 @@ def plot_block_switches(wr_name = None,sessions = None):
     ax2.set_ylabel('# of blocks')
     ax2.set_xlabel('# of trials in each block')
     
+    blocknums = list()                   
     ax3=fig.add_axes([0,-1,.8,.8])
-    idx = (p_r_change >0) & (p_r_change >.3) & (np.abs(p_r_change) <1)
-    ax3.plot(np.arange(-30,50),np.ones(80)*.5,'k-')
-    ax3.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    idx = (p_l_change > 0) & (p_l_change > .3) & (np.abs(p_r_change) <1)
-    ax3.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    ax3.set_title('High contrast - '+wr_name+' - '+session_name)
+    idx = (p_r_change*multiplier <1) & (p_r_change*multiplier >contrast_edges[2]) & (np.abs(p_r_change) <1)
+    blocknums.append(sum(idx))
+    ax3.plot(trialnums,np.ones(len(trialnums))/lickport_num,'k-')
+# =============================================================================
+#     ignores = np.isnan(bigchoicematrix[idx,:])
+#     ax3.plot(trialnums,movingaverage(np.nanmean(ignores,0),moving_n),'y-')
+# =============================================================================
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==1,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax3.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'b-')
+    idx = (p_l_change*multiplier >0) & (p_l_change*multiplier >contrast_edges[2]) & (np.abs(p_l_change) <1)
+    blocknums.append(sum(idx))
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==0,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax3.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'r-')
+    if lickport_num == 3:
+        idx = (p_m_change*multiplier >0) & (p_m_change*multiplier >contrast_edges[2]) & (np.abs(p_m_change) <1)
+        blocknums.append(sum(idx))
+        choicematrix_now = np.asarray(bigchoicematrix[idx,:]==2,float)
+        choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+        ax3.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'g-')
+    
+    ax3.set_title('High contrast - '+wr_name+' - '+session_name +' - {} blocks'.format(blocknums))
     ax3.set_xlabel('Trials relative to block switch')
     ax3.set_ylabel('Average choice')
-    ax3.set_ylim(.1,.9)
+    if lickport_num == 2:
+        ax3.set_ylim(.1,.9)
+    elif lickport_num == 3:
+        ax3.set_ylim(.1,.5)
     
+    blocknums = list()                   
     ax4=fig.add_axes([1,-1,.8,.8])
-    idx = (p_r_change >.25) & (p_r_change <.3) & (np.abs(p_r_change) <1)
-    ax4.plot(np.arange(-30,50),np.ones(80)*.5,'k-')
-    ax4.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    idx = (p_l_change > .25) & (p_l_change < .3) & (np.abs(p_r_change) <1)
-    ax4.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    ax4.set_title('Intermediate contrast - '+wr_name+' - '+session_name)
+    idx = (p_r_change*multiplier >contrast_edges[1]) & (p_r_change*multiplier <= contrast_edges[2]) & (np.abs(p_r_change) <1)
+    blocknums.append(sum(idx))
+    ax4.plot(trialnums,np.ones(len(trialnums))/lickport_num,'k-')
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==1,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax4.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'b-')
+    idx = (p_l_change*multiplier >contrast_edges[1]) & (p_l_change*multiplier <= contrast_edges[2]) & (np.abs(p_l_change) <1)
+    blocknums.append(sum(idx))
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==0,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax4.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'r-')
+    if lickport_num == 3:
+        idx = (p_m_change*multiplier >contrast_edges[1]) & (p_m_change*multiplier <= contrast_edges[2]) & (np.abs(p_m_change) <1)
+        blocknums.append(sum(idx))
+        choicematrix_now = np.asarray(bigchoicematrix[idx,:]==2,float)
+        choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+        ax4.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'g-')
+    ax4.set_title('Intermediate contrast - '+wr_name+' - '+session_name +' - {} blocks'.format(blocknums))
     ax4.set_xlabel('Trials relative to block switch')
     ax4.set_ylabel('Average choice')
-    ax4.set_ylim(.1,.9)
-    
+    if lickport_num == 2:
+        ax4.set_ylim(.1,.9)
+    elif lickport_num == 3:
+        ax4.set_ylim(.1,.5)
+        
+    blocknums = list()    
     ax5=fig.add_axes([0,-2,.8,.8])
-    idx = (p_r_change >.1) & (p_r_change <.25) & (np.abs(p_r_change) <1)
-    ax5.plot(np.arange(-30,50),np.ones(80)*.5,'k-')
-    ax5.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    idx = (p_l_change > .1) & (p_l_change < .25) & (np.abs(p_r_change) <1)
-    ax5.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    ax5.set_title('Low contrast - '+wr_name+' - '+session_name)
+    idx = (p_r_change*multiplier >contrast_edges[0]) & (p_r_change*multiplier <= contrast_edges[1]) & (np.abs(p_r_change) <1)
+    blocknums.append(sum(idx))
+    ax5.plot(trialnums,np.ones(len(trialnums))/lickport_num,'k-')
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==1,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax5.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'b-')
+    idx = (p_l_change*multiplier >contrast_edges[0]) & (p_l_change*multiplier <= contrast_edges[1]) & (np.abs(p_l_change) <1)
+    blocknums.append(sum(idx))
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==0,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax5.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'r-')
+    if lickport_num == 3:
+        idx = (p_m_change*multiplier >contrast_edges[0]) & (p_m_change*multiplier <= contrast_edges[1]) & (np.abs(p_m_change) <1)
+        blocknums.append(sum(idx))
+        choicematrix_now =np.asarray(bigchoicematrix[idx,:]==2,float)
+        choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+        ax5.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'g-')
+    ax5.set_title('Low contrast - '+wr_name+' - '+session_name +' - {} blocks'.format(blocknums))
     ax5.set_xlabel('Trials relative to block switch')
     ax5.set_ylabel('Average choice')
-    ax5.set_ylim(.1,.9)
+    if lickport_num == 2:
+        ax5.set_ylim(.1,.9)
+    elif lickport_num == 3:
+        ax5.set_ylim(.1,.5)
     
+    blocknums = list()    
     ax6=fig.add_axes([1,-2,.8,.8])
-    idx = (p_r_change >.1) & (p_r_change <1) & (np.abs(p_r_change) <1)
-    ax6.plot(np.arange(-30,50),np.ones(80)*.5,'k-')
-    ax6.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    idx = (p_l_change > .1) & (p_l_change < 1) & (np.abs(p_r_change) <1)
-    ax6.plot(np.arange(-30,50),np.nanmean(bigchoicematrix[idx,:],0))
-    ax6.set_title('All contrasts - '+wr_name+' - '+session_name)
+    idx = (p_r_change*multiplier >0) & (p_r_change*multiplier <1) & (np.abs(p_r_change) <1)
+    blocknums.append(sum(idx))
+    ax6.plot(trialnums,np.ones(len(trialnums))/lickport_num,'k-')
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==1,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax6.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'b-')
+    idx = (p_l_change*multiplier > .1) & (p_l_change*multiplier < 1) & (np.abs(p_l_change) <1)
+    blocknums.append(sum(idx))
+    choicematrix_now = np.asarray(bigchoicematrix[idx,:]==0,float)
+    choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+    ax6.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'r-')
+    if lickport_num == 3:
+        idx = (p_m_change*multiplier > .1) & (p_m_change*multiplier < 1) & (np.abs(p_m_change) <1)
+        blocknums.append(sum(idx))
+        choicematrix_now = np.asarray(bigchoicematrix[idx,:]==2,float)
+        choicematrix_now[np.isnan(bigchoicematrix[idx,:])] =np.nan
+        ax6.plot(trialnums,movingaverage(np.nanmean(choicematrix_now,0),moving_n),'g-')
+    ax6.set_title('All contrasts - '+wr_name+' - '+session_name +' - {} blocks'.format(blocknums))
     ax6.set_xlabel('Trials relative to block switch')
     ax6.set_ylabel('Average choice')
-    ax6.set_ylim(.1,.9)
+    if lickport_num == 2:
+        ax6.set_ylim(.1,.9)
+    elif lickport_num == 3:
+        ax6.set_ylim(.1,.5)
     
-    
+    #%%
 def plotregressionaverage(wr_name = None, sessions = None):
     if wr_name == None:
         key = dict()
