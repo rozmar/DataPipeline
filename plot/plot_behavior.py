@@ -1107,15 +1107,17 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
     #%%
     plt.rcParams.update({'font.size': 14})
     
-    wr_name = 'FOR20'
-    minsession = 8
-    mintrialnum = 30
-    max_bias = .9
-    bootstrapnum = 50
-    only_blocks_above_median = False
-    only_blocks_above_mean = False,
-    only_blocks_below_mean = False
-    overlay = True
+# =============================================================================
+#     wr_name = 'FOR20'
+#     minsession = 8
+#     mintrialnum = 30
+#     max_bias = .9
+#     bootstrapnum = 50
+#     only_blocks_above_median = False
+#     only_blocks_above_mean = False,
+#     only_blocks_below_mean = False
+#     overlay = True
+# =============================================================================
     
     allslopes = list()
     meanslopes = list()
@@ -1123,7 +1125,7 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
     metricnames = ['block_choice_ratio_right','block_choice_ratio_left','block_choice_ratio_middle']
     metricnames_xaxes = ['block_reward_ratio_right','block_reward_ratio_left','block_reward_ratio_middle']
     blockvalues_xaxes = ['block_relative_value_right','block_relative_value_left','block_relative_value_middle']
-    plot_colors = [ (0.1,0.2,0.3),'red','green']
+    plot_colors = ['blue','red','green']
     lickport_names = ['right','left','middle']
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     key = {
