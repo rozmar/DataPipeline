@@ -1101,7 +1101,7 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
     return metricnames, meanslopes, slopes_ci, allslopes
 
 
-def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession = 8,mintrialnum = 20,max_bias = .9,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False):
+def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession = 8,mintrialnum = 20,max_bias = .9,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False,overlay = False):
     #%%
     plt.rcParams.update({'font.size': 14})
     
@@ -1114,13 +1114,17 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
 #     only_blocks_above_median = False
 #     only_blocks_above_mean = False,
 #     only_blocks_below_mean = False
+#     overlay = True
 # =============================================================================
+    
     allslopes = list()
     meanslopes = list()
     slopes_ci = list()
     metricnames = ['block_choice_ratio_right','block_choice_ratio_left','block_choice_ratio_middle']
     metricnames_xaxes = ['block_reward_ratio_right','block_reward_ratio_left','block_reward_ratio_middle']
     blockvalues_xaxes = ['block_relative_value_right','block_relative_value_left','block_relative_value_middle']
+    plot_colors = ['blue','red','green']
+    lickport_names = ['right','left','middle']
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     key = {
            'subject_id':subject_id,
@@ -1133,11 +1137,10 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
         
         #%
         df_choice_reward_rate['biasval'] =df_choice_reward_rate[['session_bias_choice_left','session_bias_choice_right','session_bias_choice_middle']].T.max()# np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
-        
-        df_choice_reward_rate['block_relative_value_right']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
-        df_choice_reward_rate['block_relative_value_left']=df_choice_reward_rate['p_reward_left']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
-        df_choice_reward_rate['block_relative_value_middle']=df_choice_reward_rate['p_reward_middle']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
-        df_choice_reward_rate['total_reward_rate']=(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle'])
+        df_choice_reward_rate['block_relative_value_right']= np.asarray(df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['block_relative_value_left']=np.asarray(df_choice_reward_rate['p_reward_left']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['block_relative_value_middle']=np.asarray(df_choice_reward_rate['p_reward_middle']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['total_reward_rate']=np.asarray((df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
         needed = (df_choice_reward_rate['total_reward_rate']< 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio_right']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias) 
         df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
         if only_blocks_above_median:
@@ -1157,7 +1160,10 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
         ax_blocklenght.set_xlabel('Block length (trials)')
         ax_blocklenght.set_ylabel('Count')
         ax_blocklenght.set_title(wr_name)
-        for idx,(metricname,metricname_x,blockvalue) in enumerate(zip(metricnames,metricnames_xaxes,blockvalues_xaxes)):#for idx,metricname in enumerate(metricnames):
+        titlesofar=''
+        for idx,(metricname,metricname_x,blockvalue,plot_color,lickport_now) in enumerate(zip(metricnames,metricnames_xaxes,blockvalues_xaxes,plot_colors,lickport_names)):#for idx,metricname in enumerate(metricnames):
+            if overlay:
+                idx = 0
             relvals = np.sort(df_choice_reward_rate[blockvalue].unique())
             choice_ratio_mean = list()
             choice_ratio_sd = list()
@@ -1172,23 +1178,29 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
     
             ax_1=fig.add_axes([1,-idx,.8,.8])
             #ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
-            ax_1.plot(df_choice_reward_rate[metricname_x],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_1.plot(df_choice_reward_rate[metricname_x],df_choice_reward_rate[metricname],plot_color[0]+'o',markersize = 3,alpha = .8)#,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
             ax_1.plot([0,1],[0,1],'k-')
             ax_1.set_ylim([0, 1])
             ax_1.set_xlim([0, 1])
             ax_1.set_xlabel('actual relative value (r/r all)')
             ax_1.set_ylabel('relative choice (c/c all')
-            ax_1.set_title(metricname)
+            if overlay:
+                ax_1.set_title('Block choice ratio')
+            else:
+                ax_1.set_title(metricname)
            
             ax_2=fig.add_axes([0,-idx,.8,.8])
-            ax_2.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
-            ax_2.plot(df_choice_reward_rate[blockvalue],df_choice_reward_rate[metricname],'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_2.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = plot_color,linewidth = 3,marker='o',ms=9)
+            ax_2.plot(df_choice_reward_rate[blockvalue],df_choice_reward_rate[metricname],plot_color[0]+'o',markersize = 3,alpha = .8)#markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
             ax_2.plot([0,1],[0,1],'k-')
             ax_2.set_ylim([0, 1])
             ax_2.set_xlim([0, 1])
             ax_2.set_xlabel('relative value (p/p all)')
             ax_2.set_ylabel('relative choice (c/c all)')
-            ax_2.set_title(metricname)
+            if overlay:
+                ax_1.set_title('Block choice ratio')
+            else:
+                ax_1.set_title(metricname)
             #%
             ax_3=fig.add_axes([2,-idx,.8,.8])
             #%
@@ -1209,21 +1221,26 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             slopes, intercepts = draw_bs_pairs_linreg(xvals, yvals, size=bootstrapnum)
             p = np.polyfit(xvals,yvals,1)
             #%
-            ax_3.plot(xvals,yvals,'o',markersize = 3,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
-            ax_3.plot([-3,3],[-3,3],'k-')
-            ax_3.plot([-3,3],np.polyval(p,[-3,3]),'r-',linewidth = 3)
+            ax_3.plot(xvals,yvals,plot_color[0]+'o',markersize = 3,alpha = .8)#markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_3.plot([-4,3],[-4,3],'k-')
+            ax_3.plot([-4,3],np.polyval(p,[-4,3]),plot_color[0]+'-',linewidth = 3)
             for i in range(bootstrapnum):
-                ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color='red')
+                ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color=plot_color)
             ax_3.set_xlabel('log reward rate log(r/r all)')
             ax_3.set_ylabel('log choice rate log(c/c all)')
-            ax_3.set_title('slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5)))
+            if overlay:
+                titlesofar = titlesofar+'\n{} slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(lickport_now, np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5))
+                ax_3.set_title(titlesofar)
+            else:
+                ax_3.set_title('slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5)))
             allslopes.append(slopes)
             meanslopes.append(np.mean(slopes))
             slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
-            #%%
+            #%
         return metricnames, meanslopes, slopes_ci, allslopes
     else:
         return metricnames, [], [], []
+
 
 
 
