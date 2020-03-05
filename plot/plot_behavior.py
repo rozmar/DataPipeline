@@ -990,6 +990,8 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
 #     only_blocks_above_mean = False,
 #     only_blocks_below_mean = False
 # =============================================================================
+    
+    
     allslopes = list()
     meanslopes = list()
     slopes_ci = list()
@@ -1105,17 +1107,15 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
     #%%
     plt.rcParams.update({'font.size': 14})
     
-# =============================================================================
-#     wr_name = 'FOR10'
-#     minsession = 8
-#     mintrialnum = 30
-#     max_bias = .9
-#     bootstrapnum = 50
-#     only_blocks_above_median = False
-#     only_blocks_above_mean = False,
-#     only_blocks_below_mean = False
-#     overlay = True
-# =============================================================================
+    wr_name = 'FOR20'
+    minsession = 8
+    mintrialnum = 30
+    max_bias = .9
+    bootstrapnum = 50
+    only_blocks_above_median = False
+    only_blocks_above_mean = False,
+    only_blocks_below_mean = False
+    overlay = True
     
     allslopes = list()
     meanslopes = list()
@@ -1123,7 +1123,7 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
     metricnames = ['block_choice_ratio_right','block_choice_ratio_left','block_choice_ratio_middle']
     metricnames_xaxes = ['block_reward_ratio_right','block_reward_ratio_left','block_reward_ratio_middle']
     blockvalues_xaxes = ['block_relative_value_right','block_relative_value_left','block_relative_value_middle']
-    plot_colors = ['blue','red','green']
+    plot_colors = [ (0.1,0.2,0.3),'red','green']
     lickport_names = ['right','left','middle']
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     key = {
@@ -1178,7 +1178,7 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
     
             ax_1=fig.add_axes([1,-idx,.8,.8])
             #ax_1.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = 'black',linewidth = 3,marker='o',ms=9)
-            ax_1.plot(df_choice_reward_rate[metricname_x],df_choice_reward_rate[metricname],plot_color[0]+'o',markersize = 3,alpha = .8)#,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_1.plot(df_choice_reward_rate[metricname_x],df_choice_reward_rate[metricname],'o',markersize = 3,alpha = .8, color =plot_color)#,markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
             ax_1.plot([0,1],[0,1],'k-')
             ax_1.set_ylim([0, 1])
             ax_1.set_xlim([0, 1])
@@ -1191,7 +1191,7 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
            
             ax_2=fig.add_axes([0,-idx,.8,.8])
             ax_2.errorbar(reward_rate_value,choice_ratio_mean,choice_ratio_sd,color = plot_color,linewidth = 3,marker='o',ms=9)
-            ax_2.plot(df_choice_reward_rate[blockvalue],df_choice_reward_rate[metricname],plot_color[0]+'o',markersize = 3,alpha = .8)#markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_2.plot(df_choice_reward_rate[blockvalue],df_choice_reward_rate[metricname],'o',markersize = 3,alpha = .8, color = plot_color)#markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
             ax_2.plot([0,1],[0,1],'k-')
             ax_2.set_ylim([0, 1])
             ax_2.set_xlim([0, 1])
@@ -1221,9 +1221,9 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             slopes, intercepts = draw_bs_pairs_linreg(xvals, yvals, size=bootstrapnum)
             p = np.polyfit(xvals,yvals,1)
             #%
-            ax_3.plot(xvals,yvals,plot_color[0]+'o',markersize = 3,alpha = .8)#markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
+            ax_3.plot(xvals,yvals,'o',markersize = 3,alpha = .8,color = plot_color)#markerfacecolor = (.5,.5,.5,1),markeredgecolor = (.5,.5,.5,1))
             ax_3.plot([-4,3],[-4,3],'k-')
-            ax_3.plot([-4,3],np.polyval(p,[-4,3]),plot_color[0]+'-',linewidth = 3)
+            ax_3.plot([-4,3],np.polyval(p,[-4,3]),'-',linewidth = 3,color = plot_color)
             for i in range(bootstrapnum):
                 ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color=plot_color)
             ax_3.set_xlabel('log reward rate log(r/r all)')
@@ -1236,7 +1236,7 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             allslopes.append(slopes)
             meanslopes.append(np.mean(slopes))
             slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
-            #%
+            #%%
         return metricnames, meanslopes, slopes_ci, allslopes
     else:
         return metricnames, [], [], []
