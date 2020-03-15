@@ -140,9 +140,10 @@ def populatemytables(paralel = True, cores = 9,del_tables = True):
                              behavioranal.SubjectPsychometricCurveBoxCarDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectPsychometricCurveFittedFractional() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectPsychometricCurveFittedDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPolarPsyCurveBoxCarDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPolarPsyCurveBoxCarFractional() & 'subject_id = "' + str(subject_id_now)+'"',
-
+                             behavioranal.SubjectPolarPsyCurveBoxCarDifferential2lp() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPolarPsyCurveBoxCarFractional2lp() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPolarPsyCurveBoxCarDifferential3lp() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectPolarPsyCurveBoxCarFractional3lp() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SessionPerformance() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectFittedChoiceCoefficientsVSTime() & 'subject_id = "' + str(subject_id_now)+'"',
                              ]
