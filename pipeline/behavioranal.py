@@ -1249,6 +1249,7 @@ class SessionFittedChoiceCoefficients(dj.Computed):
         #print(key)
         try:
             #%%
+            trials_back = 10
             df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key))
             if len(df_behaviortrial)>0:
                 trials_back = logistic_regression_trials_back
