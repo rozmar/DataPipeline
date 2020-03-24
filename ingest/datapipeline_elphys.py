@@ -24,6 +24,7 @@ def populatemytables_core_paralel(arguments,runround):
         ephysanal.SquarePulseSeriesResistance().populate(**arguments)
         ephysanal.SweepSeriesResistance().populate(**arguments)
         ephysanal.ActionPotential().populate(**arguments)
+        ephysanal.ActionPotentialDetails().populate(**arguments)
         
 
 def populatemytables_core(arguments,runround):
@@ -34,6 +35,7 @@ def populatemytables_core(arguments,runround):
         ephysanal.SquarePulseSeriesResistance().populate(**arguments)
         ephysanal.SweepSeriesResistance().populate(**arguments)
         ephysanal.ActionPotential().populate(**arguments)
+        ephysanal.ActionPotentialDetails().populate(**arguments)
 def populatemytables(paralel=True,cores = 9):
     if paralel:
         ray.init(num_cpus = cores)
