@@ -4,7 +4,7 @@ import datajoint as dj
 import pandas as pd
 import scipy.signal as signal
 import scipy.ndimage as ndimage
-from pipeline import pipeline_tools, lab, experiment, behavioranal, ephys_patch
+from pipeline import pipeline_tools, lab, experiment, behavioranal, ephys_patch#, ephysanal
 #dj.conn()
 #%%
 schema = dj.schema(pipeline_tools.get_schema_name('ephys-anal'),locals())
@@ -66,7 +66,119 @@ class ActionPotential(dj.Computed):
                         keylist.append(keynow)
                         #%%
                     self.insert(keylist,skip_duplicates=True)
-       
+@schema
+class ActionPotentialDetails(dj.Computed):
+    definition = """
+    -> ActionPotential
+    ---
+    ap_real : tinyint # 1 if real AP
+    ap_threshold : float # mV
+    ap_threshold_index : int #
+    ap_halfwidth : float # ms
+    ap_amplitude : float # mV
+    ap_dv_max : float # mV/ms
+    ap_dv_max_voltage : float # mV
+    ap_dv_min : float # mV/ms
+    ap_dv_min_voltage : float # mV    
+    """
+    def make(self, key):
+        #%%
+        sigma = .00003 # seconds for filering
+        step_time = .0001 # seconds
+        threshold_value = 10 # mV/ms
+        #%%
+# =============================================================================
+#         key = {'subject_id': 454263, 'session': 1, 'cell_number': 1, 'sweep_number': 56, 'ap_num': 30}
+#         print(key)
+# =============================================================================
+        keynow = key.copy()
+        del keynow['ap_num']
+        pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(ephys_patch.SweepResponse()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
+        pd_ap = pd.DataFrame(ActionPotential()&keynow)
+        #%%
+        if len(pd_ap)>0 and len(ActionPotentialDetails()&dict(pd_ap.loc[0])) == 0:
+            #%%
+            print(key)
+            trace = pd_sweep['response_trace'].values[0]
+            sr = pd_sweep['sample_rate'][0]
+            si = 1/sr
+            step_size = int(np.round(step_time/si))
+            ms5_step = int(np.round(.005/si))
+            trace_f = ndimage.gaussian_filter(trace,sigma/si)
+            d_trace_f = np.diff(trace_f)/si
+            tracelength = len(trace)
+            #%%
+            keylist = list()
+            for ap_now in pd_ap.iterrows():
+                ap_now = dict(ap_now[1])
+                ap_max_index = ap_now['ap_max_index']
+                dvmax_index = ap_max_index
+                while dvmax_index>step_size*2 and trace_f[dvmax_index]>0:
+                    dvmax_index -= step_size
+                while dvmax_index>step_size*2 and dvmax_index < tracelength-step_size and  np.max(d_trace_f[dvmax_index-step_size:dvmax_index])>np.max(d_trace_f[dvmax_index:dvmax_index+step_size]):
+                    dvmax_index -= step_size
+                if dvmax_index < tracelength -1:
+                    dvmax_index = dvmax_index + np.argmax(d_trace_f[dvmax_index:dvmax_index+step_size])
+                else:
+                    dvmax_index = tracelength-2
+                    
+                
+                dvmin_index = ap_max_index
+                #%
+                while dvmin_index < tracelength-step_size and  (trace_f[dvmin_index]>0 or np.min(d_trace_f[np.max([dvmin_index-step_size,0]):dvmin_index])>np.min(d_trace_f[dvmin_index:dvmin_index+step_size])):
+                    dvmin_index += step_size
+                    #%
+                dvmin_index -= step_size
+                dvmin_index = dvmin_index + np.argmin(d_trace_f[dvmin_index:dvmin_index+step_size])
+                
+                thresh_index = dvmax_index
+                while thresh_index>step_size*2 and (np.min(d_trace_f[thresh_index-step_size:thresh_index])>threshold_value):
+                    thresh_index -= step_size
+                thresh_index = thresh_index - np.argmax((d_trace_f[np.max([0,thresh_index-step_size]):thresh_index] < threshold_value)[::-1])
+                ap_threshold = trace_f[thresh_index]
+                ap_amplitude = trace_f[ap_max_index]-ap_threshold
+                hw_step_back = np.argmax(trace_f[ap_max_index:np.max([ap_max_index-ms5_step,0]):-1]<ap_threshold+ap_amplitude/2)
+                hw_step_forward = np.argmax(trace_f[ap_max_index:ap_max_index+ms5_step]<ap_threshold+ap_amplitude/2)
+                ap_halfwidth = (hw_step_back+hw_step_forward)*si
+                
+                if ap_amplitude > .01 and ap_halfwidth>.0001:
+                    ap_now['ap_real'] = 1
+                else:
+                    ap_now['ap_real'] = 0
+                ap_now['ap_threshold'] = ap_threshold*1000
+                ap_now['ap_threshold_index'] = thresh_index
+                ap_now['ap_halfwidth'] =  ap_halfwidth*1000
+                ap_now['ap_amplitude'] =  ap_amplitude*1000
+                ap_now['ap_dv_max'] = d_trace_f[dvmax_index]
+                ap_now['ap_dv_max_voltage'] = trace_f[dvmax_index]*1000
+                ap_now['ap_dv_min'] =  d_trace_f[dvmin_index]
+                ap_now['ap_dv_min_voltage'] = trace_f[dvmin_index]*1000
+                del ap_now['ap_max_index']
+                del ap_now['ap_max_time']
+                keylist.append(ap_now)
+                #%%
+            self.insert(keylist,skip_duplicates=True)
+# =============================================================================
+#             fig=plt.figure()
+#             ax_v = fig.add_axes([0,0,.8,.8])
+#             ax_dv = fig.add_axes([0,-1,.8,.8])
+#             ax_v.plot(trace[ap_max_index-step_size*10:ap_max_index+step_size*10],'k-')
+#             ax_v.plot(trace_f[ap_max_index-step_size*10:ap_max_index+step_size*10])
+#             ax_dv.plot(d_trace_f[ap_max_index-step_size*10:ap_max_index+step_size*10])
+#             dvidx_now = dvmax_index - ap_max_index + step_size*10
+#             ax_dv.plot(dvidx_now,d_trace_f[dvmax_index],'ro')
+#             ax_v.plot(dvidx_now,trace_f[dvmax_index],'ro')
+#             dvminidx_now = dvmin_index - ap_max_index + step_size*10
+#             ax_dv.plot(dvminidx_now,d_trace_f[dvmin_index],'ro')
+#             ax_v.plot(dvminidx_now,trace_f[dvmin_index],'ro')
+#             threshidx_now = thresh_index - ap_max_index + step_size*10
+#             ax_dv.plot(threshidx_now,d_trace_f[thresh_index],'ro')
+#             ax_v.plot(threshidx_now,trace_f[thresh_index],'ro')
+#             plt.show()
+#             break
+# =============================================================================
+        #%%
+    
 @schema
 class SquarePulse(dj.Computed):
     definition = """
