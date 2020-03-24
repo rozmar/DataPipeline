@@ -5,11 +5,48 @@ import pipeline.ephys_patch as ephys_patch
 import pipeline.ephysanal as ephysanal
 import pipeline.imaging as imaging
 from pipeline.pipeline_tools import get_schema_name
-schema = dj.schema(get_schema_name('imaging'),locals())
+schema = dj.schema(get_schema_name('imaging_gt'),locals()) # TODO ez el van baszva
 
 import numpy as np
 import scipy
-
+#%%
+@schema
+class CellMovieCorrespondance(dj.Computed):
+    definition = """
+    -> ephys_patch.Cell
+    -> imaging.Movie
+    ---
+    sweep_numbers = null                   : longblob # sweep numbers that 
+    """
+    def make(self, key):
+        #%
+       # key = { 'subject_id': 462149, 'session':1,'cell_number':1,'movie_number':11}
+        session_time = (experiment.Session()&key).fetch('session_time')[0]
+        cell_time = (ephys_patch.Cell()&key).fetch('cell_recording_start')[0]
+        cell_sweep_start_times =  (ephys_patch.Sweep()&key).fetch('sweep_start_time')
+        cell_sweep_end_times =  (ephys_patch.Sweep()&key).fetch('sweep_end_time')
+        time_start = float(np.min(cell_sweep_start_times))+ cell_time.total_seconds() - session_time.total_seconds()
+        time_end = float(np.max(cell_sweep_end_times))+ cell_time.total_seconds() - session_time.total_seconds()
+        try:
+            movie = (imaging.Movie())&key & 'movie_start_time > '+str(time_start) & 'movie_start_time < '+str(time_end)
+            sweep_start_times,sweep_end_times,sweep_nums = (ephys_patch.Sweep()&key).fetch('sweep_start_time','sweep_end_time','sweep_number')
+            sweep_start_times = np.asarray(sweep_start_times,float)+ cell_time.total_seconds() - session_time.total_seconds()
+            sweep_end_times = np.asarray(sweep_end_times,float)+ cell_time.total_seconds() - session_time.total_seconds()
+            #for movie in movies_now:
+            frametimes = (imaging.MovieFrameTimes&movie).fetch1('frame_times')
+            needed_start_time = frametimes[0]
+            needed_end_time = frametimes[-1]
+            sweep_nums_needed = sweep_nums[((sweep_start_times > needed_start_time) & (sweep_start_times < needed_end_time)) |
+                                    ((sweep_end_times > needed_start_time) & (sweep_end_times < needed_end_time)) | 
+                                    ((sweep_end_times > needed_end_time) & (sweep_start_times < needed_start_time)) ]
+            if len(sweep_nums_needed)>0:
+                key['sweep_numbers'] = sweep_nums_needed
+                self.insert1(key,skip_duplicates=True)
+        except:
+            pass
+        
+            
+        #%
 @schema
 class ROIEphysCorrelation(dj.Imported): 
 # ROI (Region of interest - e.g. cells)
@@ -33,6 +70,7 @@ class ROIAPWave(dj.Imported):
     apwave_snratio                  : float
     apwave_peak_amplitude           : float
     apwave_noise                    : float
+    apwave_f0                       : float
     """
 
 @schema
@@ -56,6 +94,7 @@ class GroundTruthROI(dj.Computed):
             #print(key)
             if np.max((ROIEphysCorrelation&key).fetch('roi_number')) == np.min((ROIEphysCorrelation&key_to_compare).fetch('roi_number')):#np.max(np.abs((ROIEphysCorrelation&key).fetch('corr_coeff'))) == np.max(np.abs((ROIEphysCorrelation&key_to_compare).fetch('corr_coeff'))):
                 print('this is it')
+                print(key['roi_type'])
                 cellstarttime = (ephys_patch.Cell()&key).fetch1('cell_recording_start')
                 sessionstarttime = (experiment.Session()&key).fetch1('session_time')
                 aptimes = np.asarray((ephysanal.ActionPotential()&key).fetch('ap_max_time'),float)+(cellstarttime-sessionstarttime).total_seconds()
