@@ -18,7 +18,7 @@ class Movie(dj.Imported):
     movie_y_size                : double                # (pixels)
     movie_frame_rate            : double                # (Hz)             
     movie_frame_num             : int                   # number of frames        
-    movie_start_time            : decimal(10, 4)        # (s) from session start # it should be 10,6??? maybe end_time would also be useful
+    movie_start_time            : decimal(12, 6)        # (s) from session start # maybe end_time would also be useful
     movie_pixel_size            : decimal(5,2)          # in microns
     """ 
     
