@@ -46,10 +46,12 @@ def apply_motion_correction(movie,shifts):
 @ray.remote
 def populatemytables_gt_core_paralel(arguments,runround):
     if runround ==1:
+        imaging_gt.CellMovieCorrespondance().populate(**arguments)
         imaging_gt.GroundTruthROI().populate(**arguments)
         
 def populatemytables_gt_core(arguments,runround):
     if runround ==1:
+        imaging_gt.CellMovieCorrespondance().populate(**arguments)
         imaging_gt.GroundTruthROI().populate(**arguments)
 
 def populatemytables_gt(paralel = True, cores = 3):
@@ -97,6 +99,11 @@ def read_tiff(path,ROI_coordinates=None, n_images=100000):
 #%%
 def upload_spike_pursuit_matlab_data(key_now,movie_dir_now):
     #%%
+# =============================================================================
+#     key_now = {'subject_id': 456462, 'session': 1, 'movie_number': 3}
+#     movie_dir_now = '/home/rozmar//Data/Voltage_imaging/Spikepursuit/Voltage_rig_1P/rozsam/20191220/40x_1xtube_10A5'
+# =============================================================================
+    
     files = os.listdir(movie_dir_now)
     movie_x_size, movie_y_size = (imaging.Movie()&key_now).fetch1('movie_x_size','movie_y_size')
     if 'ROIs.mat' in files:
@@ -142,7 +149,7 @@ def upload_spike_pursuit_matlab_data(key_now,movie_dir_now):
                         spikeidxes = [np.asarray(celldata['spikeTimes'][0],dtype = int)+sum(framenums)]
                         ROI_coordinates = [celldata['ROI']-1]
                         dff = [celldata['dFF'].T[0]]
-                        f0 = [celldata['F0'].T[0]]
+                        f0 = [celldata['F0'][0]]
                         spatial_filters = [celldata['spatialFilter']*-1]
                     else:                                    
                         shift, error, diffphase = register_translation(meanimages[-1], meanimage, 10)
@@ -174,6 +181,7 @@ def upload_spike_pursuit_matlab_data(key_now,movie_dir_now):
                         key_motioncorr['motion_corr_description'] = 'rigid motion correction done with dftregistration'
                         key_motioncorr['motion_corr_vectors'] = np.concatenate(motion_corr_vectors)
                         imaging.MotionCorrection().insert1(key_motioncorr, allow_direct_insert=True)
+                    f0_orig=f0
                     while not type(spikeidxes[0]) == np.int64:
                         spikeidxes = np.concatenate(spikeidxes)
                         dff = np.concatenate(dff)
@@ -193,6 +201,8 @@ def upload_spike_pursuit_matlab_data(key_now,movie_dir_now):
                     key_roi['roi_centroid_x'] = np.mean(ROI_coordinates[0],0)[0]
                     key_roi['roi_centroid_y'] = np.mean(ROI_coordinates[0],0)[1]
                     key_roi['roi_mask'] = mask
+                    print(['lengths dff vs f0:',len(dff),len(f0)])
+                    #time.sleep(1000)
                     try:
                         imaging.ROI().insert1(key_roi, allow_direct_insert=True)
                     except:
@@ -229,9 +239,12 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
 #     movie_number = 5
 #     cellnum = 1
 # =============================================================================
-    
-    
-    
+    #%%
+# =============================================================================
+#     key = {'subject_id': 454597, 'session': 1, 'movie_number': 0, 'roi_number': 2, 'motion_correction_method': 'Matlab', 'roi_type': 'SpikePursuit', 'sweep_number': 31}
+#     movie_number=0
+#     cellnum=0
+# =============================================================================
     plotit = False
     convolve_voltron_kinetics = False
     tau_1_on = .64/1000
@@ -269,6 +282,12 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                 roikey['motion_correction_method'] = motion_correction_method
                 roikey['roi_type'] = roi_type
                 roikey['sweep_number'] = sweep_number
+                
+                
+                #%
+                #roikey = {'subject_id': 454597, 'session': 1, 'movie_number': 0, 'roi_number': 1, 'motion_correction_method': 'Matlab', 'roi_type': 'SpikePursuit', 'sweep_number': 31}
+                
+                
                 if len(imaging_gt.ROIEphysCorrelation()&roikey) ==0 or len(imaging_gt.ROIAPWave()&roikey) ==0:
                     if not convolvingdone:
                         start_t = tracetime[0]
@@ -310,6 +329,7 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                     
     
                     dff = (imaging.ROI()&roikey).fetch('roi_dff')[0]
+                    f0 = (imaging.ROI()&roikey).fetch('roi_f0')[0]
     # =============================================================================
     #                 if len(f_idx_now)>len(dff) or len(e_idx_original)>len(dff):
     #                     print('movie length not correct.. cutting indexes')
@@ -321,9 +341,11 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                     dff_filt = signal.sosfilt(sos, dff)   
                     try: #TODO debug me! roikey = {}?????
                         dff_now = dff[f_idx_now]
+                        f0_now = f0[f_idx_now]
                     except:
                         print(roikey)
                         dff_now = dff[f_idx_now]
+                        f0_now = f0[f_idx_now]
                     dff_filt_now = dff_filt[f_idx_now]
                     spiketimes = (imaging.ROI()&key & 'movie_number = '+str(movie_number)&'roi_number = '+str(roi_number)).fetch('roi_spike_indices')[0]
                     if plotit:
@@ -365,6 +387,7 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                     key_roi_ephys['sweep_number'] = sweep_number
                     key_roi_ephys['time_lag'] = time_offset
                     key_roi_ephys['corr_coeff'] = corr_value
+                    
                     print(key_roi_ephys)
                     try:
                         imaging_gt.ROIEphysCorrelation().insert1(key_roi_ephys, allow_direct_insert=True)
@@ -451,6 +474,7 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                            apkey_now = apkey.copy()
                            #f_ap_idxes = np.arange(-step_back,step_forward)+f_max_idx
                            ap_dff = dff_now[f_max_idx-step_back:f_max_idx+step_forward]
+                           ap_f0 = np.mean(f0_now[f_max_idx-step_back:f_max_idx])
                            ap_dff_filt = dff_filt_now[f_max_idx-step_back:f_max_idx+step_forward]
                            ap_time = dff_time_now[f_max_idx-step_back:f_max_idx+step_forward]-ap_max_time
                            if ap_num>1:
@@ -479,6 +503,7 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                            apkey_now['apwave_snratio'] = ap_peak_amplitude/np.std(baseline_dff)
                            apkey_now['apwave_peak_amplitude'] = ap_peak_amplitude#np.abs(np.min(ap_dff[step_back-step_end_baseline:step_back+step_end_baseline])-np.mean(baseline_dff))
                            apkey_now['apwave_noise'] = np.std(baseline_dff)
+                           apkey_now['apwave_f0'] = ap_f0
                            apkeys.append(apkey_now)
                            #snratios.append(apkey_now['apwave_snratio'] )
 # =============================================================================
@@ -491,7 +516,7 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                         imaging_gt.ROIAPWave().insert(apkeys,allow_direct_insert=True,skip_duplicates=True)            
             except:
                 print('couldn''t do this one:')
-                print(roikey)
+                print([roikey,'cellnum:',cellnum])
                 #asdasd
                 #time.sleep(1000)
                 
@@ -505,8 +530,9 @@ def upload_movie_metadata():
     if repository == 'mr_share':  
         repodir = '/home/rozmar/Network/slab_share_mr'
         repodir = '/home/rozmar'
-        basedir = os.path.join(repodir, 'Data/Voltage_imaging/Voltage_rig_1P/rozsam')
+        basedir = os.path.join(repodir, 'Data/Voltage_imaging/raw/Voltage_rig_1P/rozsam')
     #basedir = '/home/rozmar/Network/Voltage_imaging_rig_1p_imaging/rozsam'
+    #%
     dirs = os.listdir(basedir )
     sessiondates = experiment.Session().fetch('session_date')
     for session_now in dirs:
@@ -516,164 +542,189 @@ def upload_movie_metadata():
                 subject_id = (experiment.Session() & 'session_date = "'+str(session_date)+'"').fetch('subject_id')[0]
                 session = (experiment.Session() & 'session_date = "'+str(session_date)+'"').fetch('session')[0]            
                 key = {'subject_id':subject_id,'session':session}
-                
                 session_dir_now = os.path.join(basedir, session_now)
-                files = os.listdir(session_dir_now)
-                
-                basenames = list()
-                fileindexes = list()
-                ismulti = list()
-                for filename in files:
-                    sepidx = filename[::-1].find('_')
-                    dotidx = filename.find('.')
-                    basenames.append(filename[:-sepidx-1])
-                    fileindexes.append(filename[-sepidx:dotidx])
-                    ismulti.append(filename[dotidx:] == '.tif' and fileindexes[-1].isnumeric())
-                files = np.asarray(files)[ismulti]
-                basenames = np.asarray(basenames)[ismulti]
-                fileindexes = np.asarray(fileindexes)[ismulti]
-                uniquebasenames = np.unique(basenames)
-                movinamesuploaded_sofar = (imaging.Movie()&key).fetch('movie_name')
-                print(session_dir_now)
-                for movie_idx, basename in enumerate(uniquebasenames):
-                    if basename not in movinamesuploaded_sofar:
-                        print(basename)
-                        sepidxes = np.asarray([i for i, ltr in enumerate(basename) if ltr == '_' or ltr == '-'])
-                        if basename.find('x_')>-1:
-                            magnification = int(basename[:basename.find('x_')])
-                        else:
-                            magnification = 40. #default value
-                        if 'tube' in basename.lower():
-                            if '_tube' in basename.lower():
-                                camera_tube_magn= float(basename[sepidxes[np.argmax(sepidxes>basename.lower().find('_tube'))-2]+1:basename.lower().find('_tube')-1])
-                            else:
-                                camera_tube_magn= float(basename[sepidxes[np.argmax(sepidxes>basename.lower().find('tube'))-1]+1:basename.lower().find('tube')-1])
-                                    
-                        else: 
-                            camera_tube_magn = 1. # default value
+                moviedirs = os.listdir(session_dir_now)
+                #%
+                movienums=list()
+                for moviedir in moviedirs:
+                    m = re.search(r'\d+$', moviedir)
+                    if m is not None:
+                        movienums.append(int(moviedir[m.span()[0]:]))
+                    else:
+                        movienums.append(-1)
+                    #%
+                moviedirs = np.asarray(moviedirs)[np.argsort(movienums)]    
                         
+                for moviedir in moviedirs:
+                    movie_dir_now = os.path.join(session_dir_now,moviedir)
+                    if os.path.isdir(movie_dir_now):
+                        upload_movie_metadata_core(movie_dir_now,
+                                                   key = key,
+                                                   copy_tiff_locally_first = copy_tiff_locally_first,
+                                                   tempdir = tempdir,
+                                                   repository = repository,
+                                                   repodir = repodir)
                         
-                        files_now = files[basenames == basename]
-                        indexes_now = fileindexes[basenames == basename]
-                        order = np.argsort(indexes_now)
-                        files_now = files_now[order]
-                        frame_count = list()
-                        freqs = list()
-                        first_frame_times = list()
-                        for file_now in files_now:
-                            if copy_tiff_locally_first:
-                                shutil.copyfile(os.path.join(session_dir_now,file_now),os.path.join(tempdir,'temp.tif'))
-                                tifffile = os.path.join(tempdir,'temp.tif')
-                            else:
-                                tifffile = os.path.join(session_dir_now,file_now)
-                            with Image.open(tifffile) as im:#with Image.open(os.path.join(session_dir_now,file_now)) as im:
-                                frame_count.append(im.n_frames)
-                                width = im.tag[256][0]
-                                height = im.tag[257][0]
-                                tagstring = im.tag[270][0]
-                                datetimematch = re.search(r'\d{4} \d{2}:\d{2}:\d{2}', tagstring)
-                                movie_time = datetime.datetime.strptime(tagstring[tagstring.find('\r\n')+2:datetimematch.end()], '%a, %d %b %Y %H:%M:%S')
-                                string_now = tagstring[tagstring.find('Time_From_Start =')+len('Time_From_Start = '):]
-                                string_now = string_now[:string_now.find('\r\n')]
-                                a = datetime.datetime.strptime(string_now, '%H:%M:%S.%f').time()#
-                                string_now = tagstring[tagstring.find('Exposure1 = ')+len('Exposure1 = '):]
-                                string_now = string_now[:string_now.find('s')]
-                                freq = 1/float(string_now)
-                                freqs.append(freq)
-                                time_to_first_frame = datetime.timedelta(hours = a.hour,minutes = a.minute,seconds = a.second, microseconds = a.microsecond)
-                                total_seconds = time_to_first_frame.total_seconds()
-                                first_frame_time = movie_time + time_to_first_frame
-                                first_frame_times.append(first_frame_time)
-                                string_now = tagstring[tagstring.find('Binning =')+len('Binning = '):]
-                                string_now = string_now[:string_now.find('\r\n')]
-                                binning = int(string_now)
-                                #print(total_seconds)
-                                print(file_now)
-                                #print(movie_time)
-                                #print(first_frame_time)
-                                #print(freq)
+  #%%                      
+def upload_movie_metadata_core(session_dir_now,key,copy_tiff_locally_first,tempdir,repository,repodir):
+    #%%
+    subject_id=key['subject_id']
+    session=key['session']
+    files = os.listdir(session_dir_now)
+    basenames = list()
+    fileindexes = list()
+    ismulti = list()
+    for filename in files:
+        sepidx = filename[::-1].find('_')
+        dotidx = filename.find('.')
+        basenames.append(filename[:-sepidx-1])
+        fileindexes.append(filename[-sepidx:dotidx])
+        ismulti.append(filename[dotidx:] == '.tif' and fileindexes[-1].isnumeric())
+    files = np.asarray(files)[ismulti]
+    basenames = np.asarray(basenames)[ismulti]
+    fileindexes = np.asarray(fileindexes)[ismulti]
+    uniquebasenames = np.unique(basenames)
+    movinamesuploaded_sofar = (imaging.Movie()&key).fetch('movie_name')
+    print(session_dir_now)
+    for basename in uniquebasenames:
+        if basename not in movinamesuploaded_sofar:
+            movie_idx = len(movinamesuploaded_sofar)
+            print(basename)
+            sepidxes = np.asarray([i for i, ltr in enumerate(basename) if ltr == '_' or ltr == '-'])
+            if basename.find('x_')>-1:
+                magnification = int(basename[:basename.find('x_')])
+            else:
+                magnification = 40. #default value
+            if 'tube' in basename.lower():
+                if '_tube' in basename.lower():
+                    camera_tube_magn= float(basename[sepidxes[np.argmax(sepidxes>basename.lower().find('_tube'))-2]+1:basename.lower().find('_tube')-1])
+                else:
+                    camera_tube_magn= float(basename[sepidxes[np.argmax(sepidxes>basename.lower().find('tube'))-1]+1:basename.lower().find('tube')-1])
                         
-                        try:
-                            movie_length = (first_frame_times[-1] - movie_time).total_seconds() + frame_count[-1]/freqs[-1]
-                        except:
-                            movie_length = 0
-                        
-                        
-                        #% find the time offset between the two computers
-                        
-                        session_datetime = (datetime.datetime.combine((experiment.Session()&key).fetch('session_date')[0], datetime.time.min )+ (experiment.Session()&key).fetch('session_time')[0])
-                        celldatetimes = (datetime.datetime.combine((experiment.Session()&key).fetch('session_date')[0], datetime.time.min ) + (ephys_patch.Cell()&key).fetch('cell_recording_start'))
-                        potential_cell_number = (ephys_patch.Cell()&key).fetch('cell_number')[(celldatetimes<movie_time).argmin()-1]     
-                        key_cell = key.copy()
-                        key_cell['cell_number'] = potential_cell_number
-                        
-                        
-                        cell_datetime = (datetime.datetime.combine((experiment.Session()&key_cell).fetch('session_date')[0], datetime.time.min ) + (ephys_patch.Cell()&key_cell).fetch('cell_recording_start'))[0]
-                        movie_start_timediff = (movie_time - cell_datetime).total_seconds()-movie_length
-                        #movie_end_timediff = (first_frame_times[-1] - cell_datetime).total_seconds() + frame_count[-1]/freqs[-1] - movie_length
-                        
-                        sweep_nums, sweep_start_times, frametimes, frame_sweeptimes = (ephys_patch.Sweep()*ephysanal.SweepFrameTimes() & key_cell).fetch('sweep_number','sweep_start_time','frame_time','frame_sweep_time')
-                        if len(sweep_nums)>0:
-                            #%
-                            frametimes_all = np.concatenate(frametimes)
-                            frame_sweeptimes_all = np.concatenate(frame_sweeptimes)
-                            frametimes_diff_start = np.concatenate([[np.inf],np.diff(frametimes_all)])
-                            frametimes_diff_end = np.concatenate([np.diff(frametimes_all),[np.inf]])
-                            #%
-                            if len(frametimes_all[(frametimes_diff_start>1) & (frame_sweeptimes_all>1)])>0:
-                                #%
-                                try:#%
-                                    #%
-                                    time_offset_idx = np.argmin(np.abs(frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff))
-                                    residual_time_offset = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1)& (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff)[time_offset_idx]
-                                    movie_start_time = cell_datetime + datetime.timedelta(seconds = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)])[time_offset_idx])
-                                    #%
-                                except:
-                                    time_offset_idx=0
-                                    residual_time_offset = np.inf
-                                    movie_start_time = cell_datetime
-                                
-                                pixel_size = 6.5/(1.11*magnification*camera_tube_magn)*binning
-                                
-                                movie_start_time_from_session_start = movie_start_time - session_datetime
-                                
-                                print(['movie start time from session start ', movie_start_time_from_session_start])
-                                print(['framerate ', np.mean(freqs[1:])])
-                                print(['frame count ', sum(frame_count)])
-                                print(['time offset between computers ', residual_time_offset])
-                                print(residual_time_offset)
-                                if np.abs(residual_time_offset)<100:
+            else: 
+                camera_tube_magn = 1. # default value
+            
+            
+            files_now = files[basenames == basename]
+            indexes_now = fileindexes[basenames == basename]
+            order = np.argsort(indexes_now)
+            files_now = files_now[order]
+            frame_count = list()
+            freqs = list()
+            first_frame_times = list()
+            for file_now in files_now:
+                if copy_tiff_locally_first:
+                    shutil.copyfile(os.path.join(session_dir_now,file_now),os.path.join(tempdir,'temp.tif'))
+                    tifffile = os.path.join(tempdir,'temp.tif')
+                else:
+                    tifffile = os.path.join(session_dir_now,file_now)
+                with Image.open(tifffile) as im:#with Image.open(os.path.join(session_dir_now,file_now)) as im:
+                    frame_count.append(im.n_frames)
+                    width = im.tag[256][0]
+                    height = im.tag[257][0]
+                    tagstring = im.tag[270][0]
+                    datetimematch = re.search(r'\d{4} \d{2}:\d{2}:\d{2}', tagstring)
+                    movie_time = datetime.datetime.strptime(tagstring[tagstring.find('\r\n')+2:datetimematch.end()], '%a, %d %b %Y %H:%M:%S')
+                    string_now = tagstring[tagstring.find('Time_From_Start =')+len('Time_From_Start = '):]
+                    string_now = string_now[:string_now.find('\r\n')]
+                    a = datetime.datetime.strptime(string_now, '%H:%M:%S.%f').time()#
+                    string_now = tagstring[tagstring.find('Exposure1 = ')+len('Exposure1 = '):]
+                    string_now = string_now[:string_now.find('s')]
+                    freq = 1/float(string_now)
+                    freqs.append(freq)
+                    time_to_first_frame = datetime.timedelta(hours = a.hour,minutes = a.minute,seconds = a.second, microseconds = a.microsecond)
+                    total_seconds = time_to_first_frame.total_seconds()
+                    first_frame_time = movie_time + time_to_first_frame
+                    first_frame_times.append(first_frame_time)
+                    string_now = tagstring[tagstring.find('Binning =')+len('Binning = '):]
+                    string_now = string_now[:string_now.find('\r\n')]
+                    binning = int(string_now)
+                    #print(total_seconds)
+                    print(file_now)
+                    #print(movie_time)
+                    #print(first_frame_time)
+                    #print(freq)
+            
+            try:
+                movie_length = (first_frame_times[-1] - movie_time).total_seconds() + frame_count[-1]/freqs[-1]
+            except:
+                movie_length = 0
+            
+            
+            #% find the time offset between the two computers
+            
+            session_datetime = (datetime.datetime.combine((experiment.Session()&key).fetch('session_date')[0], datetime.time.min )+ (experiment.Session()&key).fetch('session_time')[0])
+            celldatetimes = (datetime.datetime.combine((experiment.Session()&key).fetch('session_date')[0], datetime.time.min ) + (ephys_patch.Cell()&key).fetch('cell_recording_start'))
+            potential_cell_number = (ephys_patch.Cell()&key).fetch('cell_number')[(celldatetimes<movie_time).argmin()-1]     
+            key_cell = key.copy()
+            key_cell['cell_number'] = potential_cell_number
+            
+            
+            cell_datetime = (datetime.datetime.combine((experiment.Session()&key_cell).fetch('session_date')[0], datetime.time.min ) + (ephys_patch.Cell()&key_cell).fetch('cell_recording_start'))[0]
+            movie_start_timediff = (movie_time - cell_datetime).total_seconds()-movie_length
+            #movie_end_timediff = (first_frame_times[-1] - cell_datetime).total_seconds() + frame_count[-1]/freqs[-1] - movie_length
+            
+            sweep_nums, sweep_start_times, frametimes, frame_sweeptimes = (ephys_patch.Sweep()*ephysanal.SweepFrameTimes() & key_cell).fetch('sweep_number','sweep_start_time','frame_time','frame_sweep_time')
+            if len(sweep_nums)>0:
+                #%
+                frametimes_all = np.concatenate(frametimes)
+                frame_sweeptimes_all = np.concatenate(frame_sweeptimes)
+                frametimes_diff_start = np.concatenate([[np.inf],np.diff(frametimes_all)])
+                frametimes_diff_end = np.concatenate([np.diff(frametimes_all),[np.inf]])
+                #%
+                if len(frametimes_all[(frametimes_diff_start>1) & (frame_sweeptimes_all>1)])>0:
+                    #%
+                    try:#%
+                        #%
+                        time_offset_idx = np.argmin(np.abs(frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff))
+                        residual_time_offset = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1)& (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff)[time_offset_idx]
+                        movie_start_time = cell_datetime + datetime.timedelta(seconds = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)])[time_offset_idx])
+                        #%
+                    except:
+                        time_offset_idx=0
+                        residual_time_offset = np.inf
+                        movie_start_time = cell_datetime
+                    
+                    pixel_size = 6.5/(1.11*magnification*camera_tube_magn)*binning
+                    
+                    movie_start_time_from_session_start = movie_start_time - session_datetime
+                    
+                    print(['movie start time from session start ', movie_start_time_from_session_start])
+                    print(['framerate ', np.mean(freqs[1:])])
+                    print(['frame count ', sum(frame_count)])
+                    print(['time offset between computers ', residual_time_offset])
+                    print(residual_time_offset)
+                    if np.abs(residual_time_offset)<100:
 
-    
-                                    moviedata = {'subject_id':subject_id,'session':session}
-                                    moviedata['movie_number'] = movie_idx
-                                    moviedata['movie_name'] = basename
-                                    moviedata['movie_x_size'] = width
-                                    moviedata['movie_y_size'] = height                                
-                                    moviedata['movie_frame_rate'] = np.mean(freqs)
-                                    moviedata['movie_frame_num'] = sum(frame_count)
-                                    moviedata['movie_start_time'] = movie_start_time_from_session_start.total_seconds()
-                                    moviedata['movie_pixel_size'] = pixel_size
+
+                        moviedata = {'subject_id':subject_id,'session':session}
+                        moviedata['movie_number'] = movie_idx
+                        moviedata['movie_name'] = basename
+                        moviedata['movie_x_size'] = width
+                        moviedata['movie_y_size'] = height                                
+                        moviedata['movie_frame_rate'] = np.mean(freqs)
+                        moviedata['movie_frame_num'] = sum(frame_count)
+                        moviedata['movie_start_time'] = movie_start_time_from_session_start.total_seconds()
+                        moviedata['movie_pixel_size'] = pixel_size
 
 # =============================================================================
 #                                     print('waiting')
 #                                     timer.sleep(1000)
 # =============================================================================
-                                    imaging.Movie().insert1(moviedata, allow_direct_insert=True)
-    
-                                    moviefiledata = list()
-                                    for movie_file_number, (movie_file_name,movie_frame_count) in enumerate(zip(files_now.tolist(),frame_count)):
-                                        moviefiledata_now  = {'subject_id':subject_id,'session':session}
-                                        moviefiledata_now['movie_number'] = movie_idx
-                                        moviefiledata_now['movie_file_number'] = movie_file_number
-                                        moviefiledata_now['movie_file_repository']= repository
-                                        moviefiledata_now['movie_file_directory']= session_dir_now[len(repodir)+1:]
-                                        moviefiledata_now['movie_file_name'] = movie_file_name
-                                        moviefiledata_now['movie_file_start_frame'] = 0
-                                        moviefiledata_now['movie_file_end_frame']= movie_frame_count
-                                        moviefiledata.append(moviefiledata_now)
-                                    imaging.MovieFile().insert(moviefiledata, allow_direct_insert=True)
+                        imaging.Movie().insert1(moviedata, allow_direct_insert=True)
 
+                        moviefiledata = list()
+                        for movie_file_number, (movie_file_name,movie_frame_count) in enumerate(zip(files_now.tolist(),frame_count)):
+                            moviefiledata_now  = {'subject_id':subject_id,'session':session}
+                            moviefiledata_now['movie_number'] = movie_idx
+                            moviefiledata_now['movie_file_number'] = movie_file_number
+                            moviefiledata_now['movie_file_repository']= repository
+                            moviefiledata_now['movie_file_directory']= session_dir_now[len(repodir)+1:]
+                            moviefiledata_now['movie_file_name'] = movie_file_name
+                            moviefiledata_now['movie_file_start_frame'] = 0
+                            moviefiledata_now['movie_file_end_frame']= movie_frame_count
+                            moviefiledata.append(moviefiledata_now)
+                        imaging.MovieFile().insert(moviefiledata, allow_direct_insert=True)
 #%% search for the exposition times
 def calculate_exposition_times():
     #%%
