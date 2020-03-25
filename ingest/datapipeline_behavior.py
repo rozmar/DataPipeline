@@ -32,7 +32,7 @@ def populatemytables_core_paralel(arguments,runround):
         behavioranal.BlockChoiceRatio().populate(**arguments)  
         behavioranal.BlockAutoWaterCount().populate(**arguments)  
         behavioranal.SessionBlockSwitchChoices().populate(**arguments)   #OBSOLETE
-        # behavioranal.SessionFittedChoiceCoefficients().populate(**arguments) #Not up to date
+        #behavioranal.SessionFittedChoiceCoefficients().populate(**arguments) #Not up to date
         behavioranal.SubjectFittedChoiceCoefficientsRNRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsRNR.populate(**arguments)
@@ -494,13 +494,28 @@ def populatebehavior_core(IDs = None):
                                                     outcome = 'ignore'
                                                 else:
                                                     outcome = 'miss'
-                                            #%
+                                            #% accumulated reward
+                                            if 'reward_L_accumulated' in df_behavior_trial.keys():
+                                                trial_available_reward_left = df_behavior_trial['reward_L_accumulated'].values[0]
+                                            else:
+                                                trial_available_reward_left = None
+                                            if 'reward_R_accumulated' in df_behavior_trial.keys():
+                                                trial_available_reward_right = df_behavior_trial['reward_R_accumulated'].values[0]
+                                            else:
+                                                trial_available_reward_left = None
+                                            if 'reward_M_accumulated' in df_behavior_trial.keys():
+                                                trial_available_reward_middle = df_behavior_trial['reward_M_accumulated'].values[0]
+                                            else:
+                                                trial_available_reward_left = None
                                             behaviortrialdata = {
                                                     'subject_id': subject_id_now,
                                                     'session': session_now['session'][0],
                                                     'trial': trialnum,
                                                     'task': task,
                                                     'task_protocol': task_protocol,
+                                                    'trial_available_reward_left' : trial_available_reward_left,
+                                                    'trial_available_reward_right': trial_available_reward_right,
+                                                    'trial_available_reward_middle': trial_available_reward_middle,
                                                     #'trial_instruct':,
                                                     'trial_choice': trial_choice,
                                                     'early_lick':early_lick,
