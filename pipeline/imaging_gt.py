@@ -85,14 +85,28 @@ class GroundTruthROI(dj.Computed):
     ophys_unmatched_ap_times                : longblob # in seconds, from the start of the session
     """
     def make(self, key):
-        
+        #%
         #key = {'subject_id': 454597, 'session': 1, 'cell_number': 0, 'motion_correction_method': 'Matlab', 'roi_type': 'SpikePursuit', 'roi_number': 1}
-        #key = {'subject_id': 454597, 'session': 1, 'cell_number': 1, 'movie_number': 0, 'motion_correction_method': 'Matlab', 'roi_type': 'SpikePursuit', 'roi_number': 1}
+        #key = {'subject_id': 456462, 'session': 1, 'cell_number': 5, 'movie_number': 3, 'motion_correction_method': 'VolPy', 'roi_type': 'VolPy', 'roi_number': 1}
         if len(ROIEphysCorrelation&key)>0:#  and key['roi_type'] == 'SpikePursuit' #only spikepursuit for now..
             key_to_compare = key.copy()
             del key_to_compare['roi_number']
             #print(key)
-            if np.max((ROIEphysCorrelation&key).fetch('roi_number')) == np.min((ROIEphysCorrelation&key_to_compare).fetch('roi_number')):#np.max(np.abs((ROIEphysCorrelation&key).fetch('corr_coeff'))) == np.max(np.abs((ROIEphysCorrelation&key_to_compare).fetch('corr_coeff'))):
+            #%
+            roinums = np.unique((ROIEphysCorrelation()&key_to_compare).fetch('roi_number'))
+            snratios_mean = list()
+            snratios_median = list()
+            snratios_first50 = list()
+            for roinum_now in roinums:
+                
+                snratios = (ROIAPWave()&key_to_compare &'roi_number = {}'.format(roinum_now)).fetch('apwave_snratio')
+                snratios_mean.append(np.mean(snratios))
+                snratios_median.append(np.median(snratios))
+                snratios_first50.append(np.mean(snratios[:50]))
+                
+            
+            #%%
+            if np.max((ROIEphysCorrelation()&key).fetch('roi_number')) == roinums[np.argmax(snratios_first50)]:#np.max((imaging_gt.ROIEphysCorrelation()&key).fetch('roi_number')) == np.min((imaging_gt.ROIEphysCorrelation&key_to_compare).fetch('roi_number')):#np.max(np.abs((ROIEphysCorrelation&key).fetch('corr_coeff'))) == np.max(np.abs((ROIEphysCorrelation&key_to_compare).fetch('corr_coeff'))):
                 print('this is it')
                 print(key['roi_type'])
                 cellstarttime = (ephys_patch.Cell()&key).fetch1('cell_recording_start')
@@ -154,6 +168,7 @@ class GroundTruthROI(dj.Computed):
                 key['ophys_unmatched_ap_times'] = false_positive_time_imaging
                 #print(imaging.ROI()&key)
                 #print([len(aptimes),'vs',len(roi_ap_times)])
+                #%%
                 self.insert1(key,skip_duplicates=True)
 
             #else:
