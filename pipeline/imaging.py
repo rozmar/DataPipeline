@@ -77,7 +77,20 @@ class ROIType(dj.Lookup):
     #
     roi_type  :  varchar(30)
     """
-    contents = zip(['SpikePursuit','SpikePursuit_dexpF0','Suite2P','VolPy','VolPy_dexpF0','VolPy_denoised','Volpy_denoised_dexpF0','SpikePursuit_raw','VolPy_raw','VolPy_raw_dexpF0','VolPy_denoised_raw','VolPy_denoised_raw_dexpF0'])
+    contents = zip(['SpikePursuit',
+                    'SpikePursuit_dexpF0',
+                    'Suite2P',
+                    'VolPy',
+                    'VolPy_dexpF0',
+                    'VolPy_denoised',
+                    'Volpy_denoised_dexpF0',
+                    'SpikePursuit_raw',
+                    'VolPy_raw',
+                    'VolPy_raw_dexpF0',
+                    'VolPy_denoised_raw',
+                    'VolPy_denoised_raw_dexpF0',
+                    'SpikePursuit_baseline_subtracted',
+                    'VolPy_baseline_subtracted'])
 
 @schema
 class ROI(dj.Imported): 
