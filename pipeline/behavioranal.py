@@ -627,7 +627,7 @@ class SessionStats(dj.Computed):
     session_hits : int #number of hits
     session_misses : int #number of misses
     session_ignores : int #number of ignores
-    session_ignore_trial_nums : longblob #number of ignores
+    session_ignore_trial_nums = null : longblob #number of ignores
     session_autowaters : int #number of autowaters
     session_length : decimal(10, 4) #length of the session in seconds
     session_pretraining_trial_num = null: int #number of pretraining trials
@@ -658,6 +658,7 @@ class SessionStats(dj.Computed):
                 keytoadd['session_pretraining_trial_num'] = realtraining.values.argmax()
                 #print(str(realtraining.values.argmax())+' out of '+str(keytoadd['session_trialnum']))
             if (df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values.any():
+                keytoadd['session_ignore_trial_nums'] = np.where((df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)[0]+keytoadd['session_pretraining_trial_num']+1
                 keytoadd['session_1st_ignore'] = (df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values.argmax()+keytoadd['session_pretraining_trial_num']+1
                 if (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==2).any():
                     keytoadd['session_1st_2_ignores'] = (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==2).argmax() +keytoadd['session_pretraining_trial_num']+1
