@@ -273,6 +273,8 @@ class WaterValveData(dj.Imported):
 class TrialAvailableReward(dj.Imported):
     definition = """
     # available reward for the mouse upon choice
+    -> SessionTrial
+    ----
     trial_available_reward_left=null  : tinyint # 1: reward is available, 0: reward is not available   
     trial_available_reward_right=null  : tinyint # 1: reward is available, 0: reward is not available
     trial_available_reward_middle=null  : tinyint # 1: reward is available, 0: reward is not available
@@ -287,7 +289,6 @@ class BehaviorTrial(dj.Imported):
     -> [nullable] SessionBlock
     -> TaskProtocol
     -> [nullable] TrialInstruction
-    -> [nullable] TrialAvailableReward
     -> [nullable] Choice
     -> EarlyLick
     -> Outcome
