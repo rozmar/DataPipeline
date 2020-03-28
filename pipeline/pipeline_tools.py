@@ -34,17 +34,24 @@ def get_schema_name(name):
 def drop_every_schema(schemaname):
  #%% Drop everything   
  #%%
-    schema = dj.schema(schemaname+'-behavior-anal')
+    schema = dj.schema(schemaname+'-behavior-foraging')
     schema.drop(force=True) 
+ #%%
+    schema = dj.schema(schemaname+'-behavior-anal')
+    schema.drop(force=True)
+    #%%
+    schema = dj.schema(schemaname+'-imaging_gt')
+    schema.drop(force=True)
+    #%%
+    schema = dj.schema(schemaname+'-imaging')
+    schema.drop(force=True)
      #%%
     schema = dj.schema(schemaname+'-ephys-anal')
     schema.drop(force=True)
     #%%
     schema = dj.schema(schemaname+'-ephys_patch')
     schema.drop(force=True)
-    #%%
-    schema = dj.schema(schemaname+'-imaging')
-    schema.drop(force=True)
+    
     
     #%%
     schema = dj.schema(schemaname+'-experiment')
