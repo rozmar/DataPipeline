@@ -36,6 +36,11 @@ def moving_average(a, n=3) : # moving average
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
 #%%
+    
+def populatemytables_imaging():
+    arguments = {'display_progress' : True, 'reserve_jobs' : False}
+    imaging.MovieBaseLineValue().populate(**arguments)
+
 @ray.remote
 def apply_motion_correction(movie,shifts):
     movie_corrected=list()
@@ -1064,6 +1069,39 @@ def upload_gt_correlations_apwaves(cores = 3):
             result_ids.append(ROIEphysCorrelation_ROIAPwave_populate.remote(key.copy(),movie_number,cellnum))
     ray.get(result_ids)
     ray.shutdown()
-            
 
+@ray.remote
+def upload_baseline_subtracted_ROI_core(roi_key,roi_type):
+    #%
+    baseline_min = (imaging.MovieBaseLineValue()&roi_key).fetch1('movie_base_line_mean')
+    roi_now = (imaging.ROI()&roi_key).fetch(as_dict = True)[0]
+    dff= roi_now['roi_dff']
+    f0= roi_now['roi_f0']
+    f = dff*f0 + f0
+    f = f - baseline_min
+    f0 = f0-baseline_min
+    dff = (f-f0)/f0
+    roi_now['roi_dff'] = dff
+    roi_now['roi_f0'] =f0
+    roi_now['roi_type'] = roi_type+'_base_subtr_mean'
+    #%
+    imaging.ROI().insert1(roi_now, allow_direct_insert=True)
+
+def upload_baseline_subtracted_ROIs(roi_type='SpikePursuit',cores = 8):
+    #%
+   # roi_type='SpikePursuit'
+    ray.init(num_cpus = cores)
+    result_ids = []
+    roi_keys = (imaging.ROI()&'roi_type = "{}"'.format(roi_type)).fetch('subject_id','session' ,'movie_number' , 'motion_correction_method','roi_type','roi_number',as_dict=True)
+    for roi_key in roi_keys:
+        roi_out =roi_key.copy()
+        roi_out['roi_type'] = roi_type+'_base_subtr_mean'
+        if len(imaging.ROI()&roi_out)==0:
+            result_ids.append(upload_baseline_subtracted_ROI_core.remote(roi_key.copy(),roi_type))
+    ray.get(result_ids)
+    ray.shutdown()
+        #%
+       # break
+        
+    
 
