@@ -7,6 +7,230 @@ from pipeline import pipeline_tools, lab, experiment, behavioranal
 dj.conn()
 import matplotlib.pyplot as plt
 import decimal
+import plot.plot_behavior as plot_behavior
+import time as timer
+from matplotlib.pyplot import cm
+
+
+#%% 
+
+plot_behavior.plot_block_based_tuning_curves_three_lickports(overlay = True)
+#%% old version -  plot foraging efficiency
+wr_name = None
+min_session = 8
+max_ignore = 3
+min_trialnum = 20
+max_p_total = .6
+
+
+if wr_name == None:
+    subjects = lab.Subject().fetch(as_dict = True)
+else:    
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {'subject_id':subject_id}
+    subjects = (lab.Subject()&key).fetch(as_dict = True)
+fig=plt.figure()
+ax_idx = 0
+slopes = list()
+efficiencies = list()
+for subject in subjects:
+    if len(experiment.SessionBlock()*behavioranal.BlockStats()& 'subject_id = {}'.format(subject['subject_id'])&'session > {}'.format(min_session))>0:
+        wr_name = (lab.WaterRestriction()& 'subject_id = {}'.format(subject['subject_id'])).fetch1('water_restriction_number')
+        p_left,p_right,p_middle,block_trialnum,block_reward_rate,block_ignores = np.asarray((experiment.SessionBlock()*behavioranal.BlockStats()& 'subject_id = {}'.format(subject['subject_id']) &'session > {}'.format(min_session)).fetch('p_reward_left','p_reward_right','p_reward_middle','block_trialnum','block_reward_rate','block_ignores'),float)
+        
+        p_left[np.isnan(p_left)]=0
+        p_right[np.isnan(p_right)]=0
+        p_middle[np.isnan(p_middle)]=0
+        p_total = p_left+p_right+p_middle
+        needed_blocks = (block_ignores <= max_ignore) & (block_trialnum >= min_trialnum) & (p_total <= max_p_total)
+        
+        p_total= p_total[needed_blocks]
+        block_reward_rate = block_reward_rate[needed_blocks]
+        harvesting_efficiency = block_reward_rate/p_total
+        ax1=fig.add_axes([0,-ax_idx,.8,.8])
+        ax1.hist(harvesting_efficiency)
+        ax1.set_title(wr_name)
+        ax1.set_ylabel('# of blocks')
+        ax1.set_xlabel('Foraging efficiency')
+        try:
+            temp = plot_behavior.plot_block_based_tuning_curves(wr_name = wr_name,
+                                   minsession = min_session,
+                                   mintrialnum = min_trialnum,
+                                   max_bias = 1, #1 = TOTAL BIAS 0 = no bias
+                                   bootstrapnum = 50,
+                                   only_blocks_above_median = False,
+                                   only_blocks_above_mean = False,
+                                   only_blocks_below_mean = False)
+            slope = temp['mean_slope'][0]
+            slopes.append(slope)
+            efficiencies.append(np.median(harvesting_efficiency))
+        except:
+            pass
+        print(wr_name)
+        
+        ax_idx += 1
+
+
+
+
+
+#%% plot foraging efficiency for 2 lickports
+wr_name = None
+min_session = 8
+max_ignore = 3
+min_trialnum = 20
+max_p_total = .6
+
+
+if wr_name == None:
+    subjects = lab.Subject().fetch(as_dict = True)
+    wr_names = list()
+    subjects_real = list()
+    for subject in subjects: # ordering subjects by name
+        try:
+            wr_names.append((lab.WaterRestriction()&subject).fetch1('water_restriction_number'))
+            subjects_real.append(subject)
+        except:
+            pass
+    idx = np.argsort(wr_names)
+    subjects = np.asarray(subjects_real)[idx]
+else:    
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {'subject_id':subject_id}
+    subjects = (lab.Subject()&key).fetch(as_dict = True)
+fig=plt.figure()
+ax_idx = 0
+subject_data = list()
+for subject in subjects:
+    if len(behavioranal.SessionTrainingType()& 'subject_id = {}'.format(subject['subject_id'])&'session > {}'.format(min_session)&'session_task_protocol = 100')>0:
+        wr_name = (lab.WaterRestriction()& 'subject_id = {}'.format(subject['subject_id'])).fetch1('water_restriction_number')
+        temp = plot_behavior.plot_block_based_tuning_curves(wr_name = wr_name,
+                                                            minsession = 8,
+                                                            mintrialnum = 20,
+                                                            max_bias = 1,
+                                                            bootstrapnum = 50)
+        subject_data.append(temp)
+        print(wr_name)
+    
+#%%
+plt.rcParams.update({'font.size': 16})
+color=cm.jet(np.linspace(0,1,len(subject_data)))
+fig=plt.figure()
+ax_pooled=fig.add_axes([0,0,1.2,1.2])
+ax_session_wise=fig.add_axes([1.4,0,1.2,1.2])
+for subject,c in zip(subject_data,color):
+    ax_pooled.plot(subject['mean_slope'][0],np.median(subject['harvesting_efficiency']),'o',label = subject['water_restriction_number'],c=c)
+    ax_session_wise.plot(np.mean(subject['session_wise_slopes']),np.median(subject['harvesting_efficiency']),'o',label = subject['water_restriction_number'],c=c)
+# =============================================================================
+# ax_session_wise.plot([0,1],[.84,.84],'k--')
+# ax_session_wise.plot([0,1],[.775,.775],'k--')
+# =============================================================================
+ax_session_wise.set_xlim([0,1])
+ax_session_wise.set_ylim([0.67,.858])
+ax_session_wise.set_xlabel('Matching slope')
+ax_session_wise.set_ylabel('Harvesting efficiency')
+ax_session_wise.set_title('Fitted session-wise')
+# =============================================================================
+# ax_pooled.plot([0,1],[.84,.84],'k--')
+# ax_pooled.plot([0,1],[.775,.775],'k--')
+# =============================================================================
+ax_pooled.set_xlim([0,1])
+ax_pooled.set_ylim([0.67,.858])
+ax_pooled.set_xlabel('Matching slope')
+ax_pooled.set_ylabel('Harvesting efficiency')
+ax_pooled.set_title('All blocks pooled')
+ax_pooled.legend(fontsize='small',loc = 'best')
+ax_session_wise.legend(fontsize='small',loc = 'best')
+#%% plot ignore rates
+wr_name = None
+trials_max = 800
+p_total = list()
+ignores = list()
+hits = list()
+misses = list()
+ignores_2 = list()
+ignores_3 = list()
+if wr_name == None:
+    subjects = lab.Subject().fetch(as_dict = True)
+else:    
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {'subject_id':subject_id}
+    subjects = (lab.Subject()&key).fetch(as_dict = True)
+for subject in subjects:
+    sessions = (experiment.Session()& 'subject_id = {}'.format(subject['subject_id'])).fetch(as_dict = True)
+    if len(sessions)>0:
+        for session in sessions:
+            ignores_now = np.ones(trials_max)*np.nan
+            hits_now = np.ones(trials_max)*np.nan
+            misses_now = np.ones(trials_max)*np.nan
+            pretraining_trial_num = (behavioranal.SessionStats()&session).fetch1('session_pretraining_trial_num')
+            if not pretraining_trial_num: pretraining_trial_num = 0
+            trialnum = (behavioranal.SessionStats()&session).fetch1('session_trialnum')-pretraining_trial_num 
+            ignoretrials = (experiment.BehaviorTrial()&session&'outcome = "ignore"'&'trial<{}'.format(trials_max)).fetch('trial')-pretraining_trial_num 
+            ignoretrials = ignoretrials[ignoretrials>=0]
+            hittrials = (experiment.BehaviorTrial()&session&'outcome = "hit"'&'trial<{}'.format(trials_max)).fetch('trial')-pretraining_trial_num 
+            hittrials = hittrials[hittrials>=0]
+            misstrials = (experiment.BehaviorTrial()&session&'outcome = "miss"'&'trial<{}'.format(trials_max)).fetch('trial')-pretraining_trial_num 
+            misstrials = misstrials[misstrials>=0]
+            #%
+            p_left,p_right,p_middle = (experiment.BehaviorTrial()*experiment.SessionBlock()&session).fetch('p_reward_left','p_reward_right','p_reward_middle')
+            p_left = np.asarray(p_left,float)[pretraining_trial_num:]
+            p_left[np.isnan(p_left)]=0
+            p_right = np.asarray(p_right,float)[pretraining_trial_num:]
+            p_right[np.isnan(p_right)]=0
+            p_middle = np.asarray(p_middle,float)[pretraining_trial_num:]
+            p_middle[np.isnan(p_middle)]=0
+            p_sum = p_left+p_right+p_middle
+            p_sum_now = np.ones(trials_max)*np.nan
+            p_sum_now[:np.min([len(p_sum),trials_max])]=p_sum[:np.min([len(p_sum),trials_max])]
+            p_total.append(p_sum_now)
+            ignores_now[:trialnum]=0
+            ignores_now[ignoretrials] = 1
+            ignores.append(ignores_now)
+            hits_now[:trialnum]=0
+            hits_now[hittrials] = 1
+            hits.append(hits_now)
+            misses_now[:trialnum]=0
+            misses_now[misstrials] = 1
+            misses.append(misses_now)
+            
+            conv_ignore = np.convolve(np.array([1,1,1]),ignores_now,'same')
+            temp = np.ones(trials_max)*np.nan
+            temp[:trialnum]=0
+            temp[conv_ignore == 2]=1 
+            ignores_2.append(temp)
+            temp = np.ones(trials_max)*np.nan
+            temp[:trialnum]=0
+            temp[conv_ignore == 3]=1 
+            ignores_3.append(temp)
+            
+            
+ignores_matrix = np.asarray(ignores)            
+hits_matrix= np.asarray(hits)            
+misses_matrix= np.asarray(misses)            
+ignores2_matrix = np.asarray(ignores_2)            
+ignores3_matrix = np.asarray(ignores_3)            
+#%
+p_tot_matrix = np.asarray(p_total)            
+
+#%%
+ignore_prob = np.nanmean(ignores_matrix,0)
+plt.plot(ignore_prob)
+hits_prob = np.nanmean(hits_matrix,0)
+plt.plot(hits_prob)
+misses_prob = np.nanmean(misses_matrix,0)
+plt.plot(misses_prob)
+#%%
+p_tot_prob = np.nanmean(p_tot_matrix,0)
+plt.plot(hits_prob/p_tot_prob)
+plt.ylim([0.5,.9])
+#%%
+# =============================================================================
+# ignore_2_prob = np.nanmean(ignores2_matrix,0)
+# plt.plot(ignore_2_prob)
+# =============================================================================
+ignore_3_prob = np.nanmean(ignores3_matrix,0)
+plt.plot(ignore_3_prob)
 
 
 #%%
@@ -40,7 +264,7 @@ for wr_name in subjects:
     ax1.set_xlabel('Fractional income in the last 10 trials')
     ax1.set_ylabel('Choice')
     ax1.set_title(wr_name)
-    #break
+    break
 
 #%% 
 df_subject_wr=pd.DataFrame(behavioranal.SessionTrainingType()*lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails())
