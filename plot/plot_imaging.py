@@ -425,7 +425,7 @@ def plot_AP_waveforms(key,AP_tlimits = [-.005,.01],save_image = False):
         #break
         
 
-def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',v0_max = -35,holding_min = -600,bin_num = 10 ):       
+def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',v0_max = -35,holding_min = -600,frame_rate_min =300, frame_rate_max = 800 ,bin_num = 10 ):       
     #%% Show S/N ratios for each AP
     cmap = cm.get_cmap('jet')
 # =============================================================================
@@ -451,7 +451,7 @@ def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',v0_max = -35,holding_min = -600
         cell = cell[1]
         key_cell = dict(cell)    
         del key_cell['Freq']
-        snratios,f0,peakamplitudes,noises = (imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails()&key_cell&'ap_real = 1').fetch('apwave_snratio','apwave_f0','apwave_peak_amplitude','apwave_noise')
+        snratios,f0,peakamplitudes,noises = (imaging.Movie()*imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails()&key_cell&'ap_real = 1'&'movie_frame_rate > {}'.format(frame_rate_min)&'movie_frame_rate < {}'.format(frame_rate_max)).fetch('apwave_snratio','apwave_f0','apwave_peak_amplitude','apwave_noise')
         #f0 =  (imaging_gt.GroundTruthROI()*imaging.ROI()&key_cell).fetch('roi_f0')
         
         sweep = (imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()&key_cell).fetch('sweep_number')[0]
@@ -489,45 +489,46 @@ def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',v0_max = -35,holding_min = -600
     ax_peakampl_f0 = fig.add_axes([1.3,0,1,1])
     ax_peakampl_f0_binned = fig.add_axes([1.3,-1.2,1,1])
     for loopidx, (f0,snratio_now,noise_now,peakampl_now,cell_now) in enumerate(zip(f0s_all,snratios_all,noise_all,peakamplitudes_all,cells.iterrows())):
-        coloridx = loopidx/len(cells)
-        cell_now = cell_now[1]
-        label_now = 'Subject:{}'.format(cell_now['subject_id'])+' Cell:{}'.format(cell_now['cell_number'])
-        ax_sn_f0.plot(f0,snratio_now,'o',ms=1, color = cmap(coloridx), label= label_now)
-        ax_noise_f0.plot(f0,noise_now,'o',ms=1, color = cmap(coloridx), label= label_now)
-        ax_peakampl_f0.plot(f0,peakampl_now,'o',ms=1, color = cmap(coloridx), label= label_now)
-        lows = np.arange(np.min(f0),np.max(f0),(np.max(f0)-np.min(f0))/(bin_num+1))
-        highs = lows + (np.max(f0)-np.min(f0))/(bin_num+1)
-        mean_f0 = list()
-        sd_f0 = list()
-        mean_sn = list()
-        sd_sn =list()
-        mean_noise = list()
-        sd_noise =list()
-        mean_ampl = list()
-        sd_ampl =list()
-        for low,high in zip(lows,highs):
-            idx = (f0 >= low) & (f0 < high)
-            if len(idx)>10:
-                mean_f0.append(np.mean(f0[idx]))
-                sd_f0.append(np.std(f0[idx]))
-                mean_sn.append(np.mean(snratio_now[idx]))
-                sd_sn.append(np.std(snratio_now[idx]))
-                mean_noise.append(np.mean(noise_now[idx]))
-                sd_noise.append(np.std(noise_now[idx]))
-                mean_ampl.append(np.mean(peakampl_now[idx]))
-                sd_ampl.append(np.std(peakampl_now[idx]))
-                
-        ax_sn_f0_binned.errorbar(mean_f0,mean_sn,sd_sn,sd_f0,'o-', color = cmap(coloridx), label= label_now)
-        ax_noise_f0_binned.errorbar(mean_f0,mean_noise,sd_noise,sd_f0,'o-', color = cmap(coloridx), label= label_now)
-        ax_peakampl_f0_binned.errorbar(mean_f0,mean_ampl,sd_ampl,sd_f0,'o-', color = cmap(coloridx), label= label_now)
-            
+        if len(f0)>0:
+            coloridx = loopidx/len(cells)
+            cell_now = cell_now[1]
+            label_now = 'Subject:{}'.format(cell_now['subject_id'])+' Cell:{}'.format(cell_now['cell_number'])
+            ax_sn_f0.plot(f0,snratio_now,'o',ms=1, color = cmap(coloridx), label= label_now)
+            ax_noise_f0.plot(f0,noise_now,'o',ms=1, color = cmap(coloridx), label= label_now)
+            ax_peakampl_f0.plot(f0,peakampl_now,'o',ms=1, color = cmap(coloridx), label= label_now)
+            lows = np.arange(np.min(f0),np.max(f0),(np.max(f0)-np.min(f0))/(bin_num+1))
+            highs = lows + (np.max(f0)-np.min(f0))/(bin_num+1)
+            mean_f0 = list()
+            sd_f0 = list()
+            mean_sn = list()
+            sd_sn =list()
+            mean_noise = list()
+            sd_noise =list()
+            mean_ampl = list()
+            sd_ampl =list()
+            for low,high in zip(lows,highs):
+                idx = (f0 >= low) & (f0 < high)
+                if len(idx)>10:
+                    mean_f0.append(np.mean(f0[idx]))
+                    sd_f0.append(np.std(f0[idx]))
+                    mean_sn.append(np.mean(snratio_now[idx]))
+                    sd_sn.append(np.std(snratio_now[idx]))
+                    mean_noise.append(np.mean(noise_now[idx]))
+                    sd_noise.append(np.std(noise_now[idx]))
+                    mean_ampl.append(np.mean(peakampl_now[idx]))
+                    sd_ampl.append(np.std(peakampl_now[idx]))
+                    
+            ax_sn_f0_binned.errorbar(mean_f0,mean_sn,sd_sn,sd_f0,'o-', color = cmap(coloridx), label= label_now)
+            ax_noise_f0_binned.errorbar(mean_f0,mean_noise,sd_noise,sd_f0,'o-', color = cmap(coloridx), label= label_now)
+            ax_peakampl_f0_binned.errorbar(mean_f0,mean_ampl,sd_ampl,sd_f0,'o-', color = cmap(coloridx), label= label_now)
+                    
     ax_sn_f0.set_xlabel('F0')
     ax_sn_f0.set_ylabel('S/N ratio')
     ax_sn_f0_binned.set_xlabel('F0')
     ax_sn_f0_binned.set_ylabel('S/N ratio')
     
     #ax_sn_f0_binned.legend()
-    ax_sn_f0_binned.legend(loc='upper center', bbox_to_anchor=(-.35, 1.5), shadow=True, ncol=1)
+    ax_sn_f0_binned.legend(loc='upper center', bbox_to_anchor=(-.45, 1.5), shadow=True, ncol=1)
 
     
     
