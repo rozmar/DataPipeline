@@ -322,11 +322,17 @@ def plot_IV(subject_id = 454597, cellnum = 1, ivnum = 0,IVsweepstoplot = None):
     #ax_stim.set_title('Stimulus')
     return fig
 
-def plot_AP_waveforms(key,AP_tlimits = [-.005,.01],save_image = False):
+def plot_AP_waveforms(key,
+                      AP_tlimits = [-.005,.01],
+                      bin_step = .00001,
+                      bin_size = .00025,
+                      save_image = False):
     #%
     select_high_sn_APs = False
-    bin_step = .00001
-    bin_size = .00025
+# =============================================================================
+#     bin_step = .00001
+#     bin_size = .00025
+# =============================================================================
     #%
     tau_1_on = .64/1000
     tau_2_on = 4.1/1000
