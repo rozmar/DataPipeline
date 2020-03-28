@@ -11,6 +11,7 @@ import decimal
 import warnings
 import bootstrapped.bootstrap as bs
 import bootstrapped.stats_functions as bs_stats
+from matplotlib import cm
 #%%
 def movingaverage(values, window):
     if window >1:
@@ -977,13 +978,13 @@ def plot_one_session(wr_name = 'FOR02',session = 23, model = 'fitted differentia
 
 def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum = 20,max_bias = .5,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False):
     
-    #%%
+    #%
     plt.rcParams.update({'font.size': 14})
     
 # =============================================================================
 #     wr_name = 'FOR10'
 #     minsession = 8
-#     mintrialnum = 30
+#     mintrialnum = 20
 #     max_bias = 10
 #     bootstrapnum = 50
 #     only_blocks_above_median = False
@@ -991,6 +992,10 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
 #     only_blocks_below_mean = False
 # =============================================================================
     
+    
+    max_ignore = 3
+    max_p_total = .6
+
     
     allslopes = list()
     meanslopes = list()
@@ -1004,9 +1009,8 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
            }
     df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockStats()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()*behavioranal.SessionBias()*behavioranal.SessionTrainingType()) & key & 'session_task_protocol = 100')
     df_choice_reward_rate = df_choice_reward_rate[(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']) >0]
-    #%
-    
-    #%
+    #df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_trialnum'] >= mintrialnum]
+    #df_choice_reward_rate = df_choice_reward_rate[df_choice_reward_rate['block_ignores'] <= max_ignore]
     df_choice_reward_rate['biasval'] =df_choice_reward_rate[['session_bias_choice_left','session_bias_choice_right','session_bias_choice_middle']].T.max()# np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
     
     df_choice_reward_rate['block_relative_value']=df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left'])
@@ -1025,11 +1029,34 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
     #%
     fig=plt.figure()
     
-    ax_blocklenght=fig.add_axes([0,1,1,.8])
+    ax_blocklenght=fig.add_axes([0,1,.8,.8])
     out = ax_blocklenght.hist(df_choice_reward_rate['block_length'],30)
     ax_blocklenght.set_xlabel('Block length (trials)')
     ax_blocklenght.set_ylabel('Count')
     ax_blocklenght.set_title(wr_name)
+    
+    
+    p_left,p_right,p_middle,block_trialnum,block_reward_rate,block_ignores = np.asarray((experiment.SessionBlock()*behavioranal.BlockStats()& 'subject_id = {}'.format(key['subject_id']) &'session > {}'.format(minsession)).fetch('p_reward_left','p_reward_right','p_reward_middle','block_trialnum','block_reward_rate','block_ignores'),float)
+        
+    p_left[np.isnan(p_left)]=0
+    p_right[np.isnan(p_right)]=0
+    p_middle[np.isnan(p_middle)]=0
+    p_total = p_left+p_right+p_middle
+    needed_blocks = (block_ignores <= max_ignore) & (block_trialnum >= mintrialnum) & (p_total <= max_p_total)
+    
+    p_total= p_total[needed_blocks]
+    block_reward_rate = block_reward_rate[needed_blocks]
+    harvesting_efficiency = block_reward_rate/p_total
+    ax_efficiency = fig.add_axes([1,1,.8,.8])
+    ax_efficiency.hist(harvesting_efficiency)
+    ax_efficiency.set_title(wr_name)
+    ax_efficiency.set_ylabel('# of blocks')
+    ax_efficiency.set_xlabel('Harvesting efficiency')
+    
+    
+    ax_sessionwise_slopes = fig.add_axes([2,1,.8,.8])
+    
+    
     for idx,(metricname,metricname_x) in enumerate(zip(metricnames,metricnames_xaxes)):#for idx,metricname in enumerate(metricnames):
         relvals = np.sort(df_choice_reward_rate['block_relative_value'].unique())
         choice_ratio_mean = list()
@@ -1099,8 +1126,45 @@ def plot_block_based_tuning_curves(wr_name = 'FOR02',minsession = 8,mintrialnum 
         allslopes.append(slopes)
         meanslopes.append(np.mean(slopes))
         slopes_ci.append(np.percentile(slopes, [2.5, 97.5]))
-        #%%
-    return metricnames, meanslopes, slopes_ci, allslopes
+        #%
+        sessions = df_choice_reward_rate['session'].unique()
+        session_slopes = list()
+        session_offsets = list()
+        for session in sessions:
+            sessionidx = df_choice_reward_rate['session']==session
+            xvals = np.asarray(df_choice_reward_rate[metricname_x][sessionidx],dtype = 'float')
+            yvals = np.asarray(df_choice_reward_rate[metricname][sessionidx],dtype = 'float')
+            todel = (xvals ==1) | (yvals == 1)  | (xvals ==0) | (yvals == 0)
+            xvals = xvals[todel==False]
+            yvals = yvals[todel==False]
+            xvals = xvals/(1-xvals)
+            yvals = yvals /(1-yvals)
+            xvals = np.log2(xvals)
+            yvals = np.log2(yvals)
+            todel = (np.isinf(xvals) | np.isinf(yvals)) | (yvals ==0) | (xvals ==0) | (np.isnan(xvals) | np.isnan(yvals))
+            xvals = xvals[todel==False]
+            yvals = yvals[todel==False]
+            if len(xvals)>3:
+                ax_sessionwise_slopes.plot(xvals,yvals,'o')
+                p = np.polyfit(xvals,yvals,1)
+                ax_sessionwise_slopes.plot([-3,3],np.polyval(p,[-3,3]),'-',linewidth = 3)
+                session_slopes.append(p[0])
+                session_offsets.append(p[1])
+        ax_sessionwise_slopes.plot([-3,3],np.polyval([np.mean(session_slopes),np.mean(session_offsets)],[-3,3]),'k-',linewidth = 6)
+        ax_sessionwise_slopes.set_title('Sessionwise mean slope: {:2.2f} +- {:2.2f}'.format(np.mean(session_slopes),np.std(session_slopes)))
+        ax_sessionwise_slopes.set_xlabel('log reward rate log(r_R/r_L)')
+        ax_sessionwise_slopes.set_ylabel('log choice rate log(c_R/c_L)')
+        #%
+    output = {'water_restriction_number':wr_name,
+              'metric_names':metricnames,
+              'mean_slope':meanslopes,
+              'slopes_ci':slopes_ci,
+              'bootstrapped_slopes':allslopes,
+              'session_wise_slopes':session_slopes,
+              'session_wise_offsets':session_offsets,
+              'harvesting_efficiency':harvesting_efficiency
+              }    
+    return output
 
 
 def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession = 8,mintrialnum = 20,max_bias = .9,bootstrapnum = 100,only_blocks_above_median = False,only_blocks_above_mean = False,only_blocks_below_mean = False,overlay = False):
@@ -1124,7 +1188,7 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
     slopes_ci = list()
     metricnames = ['block_choice_ratio_right','block_choice_ratio_left','block_choice_ratio_middle']
     metricnames_xaxes = ['block_reward_ratio_right','block_reward_ratio_left','block_reward_ratio_middle']
-    blockvalues_xaxes = ['block_relative_value_right','block_relative_value_left','block_relative_value_middle']
+    blockvalues_xaxes = ['block_fractional_value_right','block_fractional_value_left','block_fractional_value_middle']
     plot_colors = ['blue','red','green']
     lickport_names = ['right','left','middle']
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
@@ -1139,9 +1203,9 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
         
         #%
         df_choice_reward_rate['biasval'] =df_choice_reward_rate[['session_bias_choice_left','session_bias_choice_right','session_bias_choice_middle']].T.max()# np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
-        df_choice_reward_rate['block_relative_value_right']= np.asarray(df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
-        df_choice_reward_rate['block_relative_value_left']=np.asarray(df_choice_reward_rate['p_reward_left']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
-        df_choice_reward_rate['block_relative_value_middle']=np.asarray(df_choice_reward_rate['p_reward_middle']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['block_fractional_value_right']= np.asarray(df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['block_fractional_value_left']=np.asarray(df_choice_reward_rate['p_reward_left']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['block_fractional_value_middle']=np.asarray(df_choice_reward_rate['p_reward_middle']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
         df_choice_reward_rate['total_reward_rate']=np.asarray((df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
         needed = (df_choice_reward_rate['total_reward_rate']< 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio_right']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias) 
         df_choice_reward_rate = df_choice_reward_rate[needed] # unwanted blocks are deleted
@@ -1213,7 +1277,6 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             yvals = yvals[todel==False]
             xvals = xvals/(1-xvals)
             yvals = yvals /(1-yvals)
-            #%
             
             xvals = np.log2(xvals)
             yvals = np.log2(yvals)
@@ -1227,9 +1290,9 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
             ax_3.plot([-4,3],[-4,3],'k-')
             ax_3.plot([-4,3],np.polyval(p,[-4,3]),'-',linewidth = 3,color = plot_color)
             for i in range(bootstrapnum):
-                ax_3.plot(np.asarray([-3,3]), slopes[i]*np.asarray([-3,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color=plot_color)
-            ax_3.set_xlabel('log reward rate log(r/r all)')
-            ax_3.set_ylabel('log choice rate log(c/c all)')
+                ax_3.plot(np.asarray([-4,3]), slopes[i]*np.asarray([-4,3]) + intercepts[i], linewidth=0.5, alpha=0.2, color=plot_color)
+            ax_3.set_xlabel('log reward rate log(r/r rest)')
+            ax_3.set_ylabel('log choice rate log(c/c rest)')
             if overlay:
                 titlesofar = titlesofar+'\n{} slope: {:2.2f}, ({:2.2f} - {:2.2f})'.format(lickport_now, np.mean(slopes),np.percentile(slopes, 2.5),np.percentile(slopes, 97.5))
                 ax_3.set_title(titlesofar)
@@ -1242,9 +1305,136 @@ def plot_block_based_tuning_curves_three_lickports(wr_name = 'FOR09',minsession 
         return metricnames, meanslopes, slopes_ci, allslopes
     else:
         return metricnames, [], [], []
+#%%
 
 
 
+
+
+
+
+
+def plot_block_based_tuning_curves_three_lickports_angular(wr_name = 'FOR09',minsession = 8,mintrialnum = 50,max_bias = 1):
+    #%%
+    vector_middle = [1,0]
+    vector_right = [-1*np.cos(np.pi/3),np.sin(np.pi/3)]
+    vector_left = [-1*np.cos(np.pi/3),-1*np.sin(np.pi/3)]
+    cmap = cm.get_cmap('jet')
+    max_marker_size = 15
+    plt.rcParams.update({'font.size': 14})
+    
+# =============================================================================
+#     wr_name = 'HC38'
+#     minsession = 8
+#     mintrialnum = 50
+#     max_bias = 1
+# =============================================================================
+    
+    
+    #colors = ['red','black']
+    
+    subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
+    key = {
+           'subject_id':subject_id,
+           #'session': session
+           }
+    df_choice_reward_rate = pd.DataFrame((experiment.SessionBlock()*behavioranal.BlockRewardRatio()*behavioranal.BlockStats()*behavioranal.BlockChoiceRatio()*behavioranal.BlockAutoWaterCount()*behavioranal.SessionBias()*behavioranal.SessionTrainingType()) & key & 'session_task_protocol = 101')
+    if len(df_choice_reward_rate)>0:
+        df_choice_reward_rate = df_choice_reward_rate[(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']) >0]
+        #%
+        
+        #%
+        
+        df_choice_reward_rate['biasval'] =df_choice_reward_rate[['session_bias_choice_left','session_bias_choice_right','session_bias_choice_middle']].T.max()# np.abs(df_choice_reward_rate['session_bias_choice']*2 -1)
+        df_choice_reward_rate['block_fractional_value_right']= np.asarray(df_choice_reward_rate['p_reward_right']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['block_fractional_value_left']=np.asarray(df_choice_reward_rate['p_reward_left']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        df_choice_reward_rate['block_fractional_value_middle']=np.asarray(df_choice_reward_rate['p_reward_middle']/(df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        
+        #%
+        
+        df_choice_reward_rate['block_fractional_value_angular_x'] = df_choice_reward_rate['block_fractional_value_right']*vector_right[0] + df_choice_reward_rate['block_fractional_value_middle']*vector_middle[0] +df_choice_reward_rate['block_fractional_value_left']*vector_left[0]
+        df_choice_reward_rate['block_fractional_value_angular_y'] = df_choice_reward_rate['block_fractional_value_right']*vector_right[1] + df_choice_reward_rate['block_fractional_value_middle']*vector_middle[1] +df_choice_reward_rate['block_fractional_value_left']*vector_left[1]
+        df_choice_reward_rate['block_fractional_value_angular_arc'] = np.arctan2(df_choice_reward_rate['block_fractional_value_angular_y'],df_choice_reward_rate['block_fractional_value_angular_x'])
+        df_choice_reward_rate['block_fractional_value_angular_length'] = np.sqrt(df_choice_reward_rate['block_fractional_value_angular_x']**2+df_choice_reward_rate['block_fractional_value_angular_y']**2)
+        basevalue = .5/np.cos(np.pi/3-df_choice_reward_rate['block_fractional_value_angular_arc']%(2*np.pi/3))
+        df_choice_reward_rate['block_fractional_value_angular_length'] = df_choice_reward_rate['block_fractional_value_angular_length']/basevalue
+        
+        
+        df_choice_reward_rate['block_reward_fraction_angular_x'] = df_choice_reward_rate['block_reward_ratio_right'].astype(float)*vector_right[0] + df_choice_reward_rate['block_reward_ratio_middle'].astype(float)*vector_middle[0] +df_choice_reward_rate['block_reward_ratio_left'].astype(float)*vector_left[0]
+        df_choice_reward_rate['block_reward_fraction_angular_y'] = df_choice_reward_rate['block_reward_ratio_right'].astype(float)*vector_right[1] + df_choice_reward_rate['block_reward_ratio_middle'].astype(float)*vector_middle[1] +df_choice_reward_rate['block_reward_ratio_left'].astype(float)*vector_left[1]
+        df_choice_reward_rate['block_reward_fraction_angular_arc'] = np.arctan2(df_choice_reward_rate['block_reward_fraction_angular_y'],df_choice_reward_rate['block_reward_fraction_angular_x'])
+        df_choice_reward_rate['block_reward_fraction_angular_length'] = np.sqrt(df_choice_reward_rate['block_reward_fraction_angular_x']**2+df_choice_reward_rate['block_reward_fraction_angular_y']**2)
+        basevalue = .5/np.cos(np.pi/3-df_choice_reward_rate['block_reward_fraction_angular_arc']%(2*np.pi/3))
+        df_choice_reward_rate['block_reward_fraction_angular_length'] = df_choice_reward_rate['block_reward_fraction_angular_length']/basevalue
+        
+        df_choice_reward_rate['block_choice_fraction_angular_x'] = df_choice_reward_rate['block_choice_ratio_right'].astype(float)*vector_right[0] + df_choice_reward_rate['block_choice_ratio_middle'].astype(float)*vector_middle[0] +df_choice_reward_rate['block_choice_ratio_left'].astype(float)*vector_left[0]
+        df_choice_reward_rate['block_choice_fraction_angular_y'] = df_choice_reward_rate['block_choice_ratio_right'].astype(float)*vector_right[1] + df_choice_reward_rate['block_choice_ratio_middle'].astype(float)*vector_middle[1] +df_choice_reward_rate['block_choice_ratio_left'].astype(float)*vector_left[1]
+        df_choice_reward_rate['block_choice_fraction_angular_arc'] = np.arctan2(df_choice_reward_rate['block_choice_fraction_angular_y'],df_choice_reward_rate['block_choice_fraction_angular_x'])
+        df_choice_reward_rate['block_choice_fraction_angular_length'] = np.sqrt(df_choice_reward_rate['block_choice_fraction_angular_x']**2+df_choice_reward_rate['block_choice_fraction_angular_y']**2)
+        basevalue = .5/np.cos(np.pi/3-df_choice_reward_rate['block_choice_fraction_angular_arc']%(2*np.pi/3))
+        df_choice_reward_rate['block_choice_fraction_angular_length'] = df_choice_reward_rate['block_choice_fraction_angular_length']/basevalue
+        
+        df_choice_reward_rate['total_reward_rate']=np.asarray((df_choice_reward_rate['p_reward_right']+df_choice_reward_rate['p_reward_left']+df_choice_reward_rate['p_reward_middle']),float).round(2)
+        fig=plt.figure()
+        ax_dir=fig.add_axes([1,0,.8,.8])
+        ax_magnitude_income=fig.add_axes([1,-.5,.8,.4])
+        ax_magnitude_choice=fig.add_axes([.5,-0,.4,.8])
+        ax_magnitudes = fig.add_axes([2,0,.8,.8])
+        df_choice_reward_rate_original = df_choice_reward_rate
+            
+            
+        needed = (df_choice_reward_rate['total_reward_rate']< 1) & (df_choice_reward_rate['session']>= minsession) & (df_choice_reward_rate['block_choice_ratio_right']>-1) & (df_choice_reward_rate['block_autowater_count']==0) & (df_choice_reward_rate['block_length'] >= mintrialnum) & (df_choice_reward_rate['biasval']<=max_bias)# &(df_choice_reward_rate['block_reward_fraction_angular_length']<.5)
+            
+    
+        df_choice_reward_rate = df_choice_reward_rate_original[needed] # unwanted blocks are deleted
+        
+        #%
+        
+        for income_arc,choice_arc,income_ampl,choice_ampl in zip(df_choice_reward_rate['block_reward_fraction_angular_arc'],df_choice_reward_rate['block_choice_fraction_angular_arc'],df_choice_reward_rate['block_reward_fraction_angular_length'],df_choice_reward_rate['block_choice_fraction_angular_length']):
+            ax_dir.plot(income_arc,choice_arc,'o',color = cmap(choice_ampl), ms = np.ceil(max_marker_size *income_ampl))
+            ax_magnitude_income.plot(income_arc,income_ampl,'o',color = cmap(choice_ampl), ms = np.ceil(max_marker_size *income_ampl))
+            ax_magnitude_choice.plot(choice_ampl,choice_arc,'o',color = cmap(choice_ampl), ms = np.ceil(max_marker_size *income_ampl))
+            ax_magnitudes.plot(income_ampl,choice_ampl,'o',color = cmap(choice_ampl), ms = np.ceil(max_marker_size *income_ampl))
+            
+        #ax_dir.plot(df_choice_reward_rate['block_reward_fraction_angular_arc'],df_choice_reward_rate['block_choice_fraction_angular_arc'],'ko',color = color_now)
+        ax_dir.set_xlim([-np.pi,np.pi])
+        ax_dir.set_ylim([-np.pi,np.pi])
+        ax_dir.set_yticks([-np.pi/3*2,0,np.pi/3*2])
+        ax_dir.set_xticks([-np.pi/3*2,0,np.pi/3*2])
+        ax_dir.set_xticklabels(['L','M','R'])
+        ax_dir.set_yticklabels(['L','M','R'])
+        ax_dir.set_title(wr_name)
+        
+        
+        #ax_magnitude_income.plot(df_choice_reward_rate['block_reward_fraction_angular_arc'],df_choice_reward_rate['block_reward_fraction_angular_length'],'ko',color = color_now)
+        ax_magnitude_income.set_ylim([0,1])
+        ax_magnitude_income.set_xticks([-np.pi/3*2,0,np.pi/3*2])
+        ax_magnitude_income.set_yticks([0,.5,1])
+        ax_magnitude_income.set_xticklabels(['L','M','R'])
+        ax_magnitude_income.set_xlim([-np.pi,np.pi])
+        ax_magnitude_income.set_xlabel('Income direction')
+        ax_magnitude_income.set_ylabel('Income amplitude')
+        
+        
+        #ax_magnitude_choice.plot(df_choice_reward_rate['block_choice_fraction_angular_length'],df_choice_reward_rate['block_choice_fraction_angular_arc'],'ko',color = color_now)
+        ax_magnitude_choice.set_xlim([0,1])
+        ax_magnitude_choice.set_yticks([-np.pi/3*2,0,np.pi/3*2])
+        ax_magnitude_choice.set_yticklabels(['L','M','R'])
+        ax_magnitude_choice.set_ylim([-np.pi,np.pi])
+        ax_magnitude_choice.set_xticks([0,.5, 1])
+        ax_magnitude_choice.set_xlabel('Choice amplitude')
+        ax_magnitude_choice.set_ylabel('Choice direction')
+        
+        
+        #ax_magnitudes.plot(df_choice_reward_rate['block_reward_fraction_angular_length'],df_choice_reward_rate['block_choice_fraction_angular_length'],'ko',color = color_now)
+        ax_magnitudes.set_xlim([0,1])
+        ax_magnitudes.set_ylim([0,1])
+        ax_magnitudes.set_xlabel('Income amplitude')
+        ax_magnitudes.set_ylabel('Choice amplitude')
+
+
+
+#%%
 
 def plot_tuning_curve_change_during_block(wr_name = 'FOR02',minsession = 8,mintrialnum = 20,max_bias = .5,bootstrapnum = 100):# TODO: FINISH this one
     #%%
