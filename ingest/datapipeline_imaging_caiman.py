@@ -51,6 +51,7 @@ import pathlib
 import pickle
 from scipy.io import loadmat
 from skimage import io as imio
+from threading import Thread
 logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]" \
                     "[%(process)d] %(message)s",
@@ -70,11 +71,8 @@ logging.basicConfig(format=
  # dataset parameters
 #fr = fr                  # sample rate of the movie
 def run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi):
-    #%%
-    
-    
-    cpu_num = 7
-    cpu_num_spikepursuit = 2
+    cpu_num = 16
+    cpu_num_spikepursuit = 3
     #gsig_filt_micron = (4, 4)  
     #max_shifts_micron = (6,6) 
     #strides_micron = (60,60)
@@ -323,7 +321,12 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi):
         #shutil.move(mmap_file, os.path.join(savedir,fname))    
         
     fname = pathlib.Path(fname_new).name
+    
+
+
+    #Thread(target=shutil.copy, args=[fname_new, os.path.join(savedir,fname)]).start()
     shutil.move(fname_new, os.path.join(savedir,fname))
+    
     #print('waiting')
     #time.sleep(1000)
     # %% some visualization
@@ -379,7 +382,7 @@ def populatevolpy():
         for filename,dir_now,basedir in zip(filenames,dirs,basedirs):
             fnames.append(os.path.join(dj.config['locations.'+basedir],dir_now,filename))
         fr = movie['movie_frame_rate']
-        savedir = os.path.join(volpy_basedir,dir_now[dir_now.find('Voltage_imaging')+len('Voltage_imaging')+1:],movie['movie_name'])
+        savedir = os.path.join(volpy_basedir,dir_now[dir_now.find('raw')+len('raw')+1:]) #,movie['movie_name'] # there is an additional directory here!
     
         pathlib.Path(savedir).mkdir(parents=True, exist_ok=True)
         print(movie)
@@ -784,44 +787,45 @@ def run_denoised_caiman_pipeline(movie,fr,loaddir,savedir,usematlabroi,onlyspike
 # =============================================================================
                 
                 
-#%% running spikepursuit
-denoised_caiman_basedir = str(pathlib.Path.home())+'/Data/Voltage_imaging/denoised_volpy/'              
-usematlabroi = True
-movies = imaging.Movie().fetch(as_dict=True)    
-for movie in movies:#[::-1]:
-    moviefiles = imaging.MovieFile()&movie
-    filenames,dirs,basedirs = moviefiles.fetch('movie_file_name','movie_file_directory','movie_file_repository')
-    fnames = list()
-    for filename,dir_now,basedir in zip(filenames,dirs,basedirs):
-        fnames.append(os.path.join(dj.config['locations.'+basedir],dir_now,filename))
-    fr = movie['movie_frame_rate']
-    loaddir = os.path.join(denoised_caiman_basedir,dir_now[dir_now.find('Voltage_imaging')+len('Voltage_imaging')+1:],movie['movie_name'])
-    savedir = loaddir
-    print(movie)
-    #time.sleep(5)
-    if 'spikepursuit.pickle' in os.listdir(savedir):
-        print('already done.. skipped')
-        
-
-        spikepursuit = pickle.load(open(os.path.join(savedir, 'spikepursuit.pickle'), 'rb'))
-        if 'dFF' not in spikepursuit['estimates'].keys():
-            if movie['movie_frame_num']>500:
-                print('rerunning only spikepursuit')
-                #time.sleep(1000)
-                #%%
-                run_denoised_caiman_pipeline(movie,fr,loaddir,savedir,usematlabroi,onlyspikepursuit = True)
-    else:
-        roidir = savedir[:savedir.find('denoised_volpy')] + 'Spikepursuit' + savedir[savedir.find('denoised_volpy')+len('denoised_volpy'):]
-        try:
-            files = os.listdir(roidir)
-        except:
-            files= []
-        if usematlabroi  and 'ROIs.mat' not in files:
-            print('no matlab ROIs found')
-        else:
-            #print('waiting')
-            #time.sleep(1000)
-            if movie['movie_frame_num']>500:
-                print('starting')
-                time.sleep(3)
-                run_denoised_caiman_pipeline(movie,fr,loaddir,savedir,usematlabroi)
+# =============================================================================
+# #%% running spikepursuit
+# denoised_caiman_basedir = str(pathlib.Path.home())+'/Data/Voltage_imaging/denoised_volpy/'              
+# usematlabroi = True
+# movies = imaging.Movie().fetch(as_dict=True)    
+# for movie in movies:#[::-1]:
+#     moviefiles = imaging.MovieFile()&movie
+#     filenames,dirs,basedirs = moviefiles.fetch('movie_file_name','movie_file_directory','movie_file_repository')
+#     fnames = list()
+#     for filename,dir_now,basedir in zip(filenames,dirs,basedirs):
+#         fnames.append(os.path.join(dj.config['locations.'+basedir],dir_now,filename))
+#     fr = movie['movie_frame_rate']
+#     loaddir = os.path.join(denoised_caiman_basedir,dir_now[dir_now.find('Voltage_imaging')+len('Voltage_imaging')+1:],movie['movie_name'])
+#     savedir = loaddir
+#     print(movie)
+#     #time.sleep(5)
+#     if 'spikepursuit.pickle' in os.listdir(savedir):
+#         print('already done.. skipped')
+#         spikepursuit = pickle.load(open(os.path.join(savedir, 'spikepursuit.pickle'), 'rb'))
+#         if 'dFF' not in spikepursuit['estimates'].keys():
+#             if movie['movie_frame_num']>500:
+#                 print('rerunning only spikepursuit')
+#                 #time.sleep(1000)
+#                 #%
+#                 run_denoised_caiman_pipeline(movie,fr,loaddir,savedir,usematlabroi,onlyspikepursuit = True)
+#     else:
+#         roidir = savedir[:savedir.find('denoised_volpy')] + 'Spikepursuit' + savedir[savedir.find('denoised_volpy')+len('denoised_volpy'):]
+#         try:
+#             files = os.listdir(roidir)
+#         except:
+#             files= []
+#         if usematlabroi  and 'ROIs.mat' not in files:
+#             print('no matlab ROIs found')
+#         else:
+#             #print('waiting')
+#             #time.sleep(1000)
+#             if movie['movie_frame_num']>500:
+#                 print('starting')
+#                 time.sleep(3)
+#                 run_denoised_caiman_pipeline(movie,fr,loaddir,savedir,usematlabroi)
+# 
+# =============================================================================
