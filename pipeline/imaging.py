@@ -5,8 +5,10 @@ import pipeline.ephys_patch as ephys_patch
 import pipeline.ephysanal as ephysanal
 from pipeline.pipeline_tools import get_schema_name
 schema = dj.schema(get_schema_name('imaging'),locals())
-
-
+from PIL import Image
+import numpy as np
+import os
+#%%
 @schema
 class Movie(dj.Imported):
     definition = """
@@ -29,7 +31,7 @@ class MovieFrameTimes(dj.Imported):
     ---
     frame_times                : longblob              # timing of each frame relative to Session start
     """
-    
+
 @schema
 class MovieFile(dj.Imported): #MovieFile
     definition = """
@@ -42,6 +44,56 @@ class MovieFile(dj.Imported): #MovieFile
     movie_file_start_frame    : int                   # first frame of this file that belongs to the movie
     movie_file_end_frame      : int                   # last frame of this file that belongs to the movie
     """
+
+
+@schema
+class MovieBaseLineValue(dj.Computed):
+    definition = """
+    -> Movie 
+    ---
+    movie_base_line_pixel_values     : longblob          # minimum pixel value of the movie for each frame
+    movie_base_line_min              : int # absolute minimum
+    movie_base_line_mean             : int # mean
+    movie_base_line_median           : int # median
+    movie_base_line_max              : int # max
+    """
+    def make(self, key):
+        #%%
+# =============================================================================
+#         key = {'subject_id': 454597, 'session': 1,'movie_number': 0}
+# =============================================================================
+        movie_files = list()
+        repositories , directories , fnames,img_start_idx,img_end_idx = (MovieFile() & key).fetch('movie_file_repository','movie_file_directory','movie_file_name','movie_file_start_frame','movie_file_end_frame')
+        for repository,directory,fname in zip(repositories,directories,fnames):
+            movie_files.append(os.path.join(dj.config['locations.{}'.format(repository)],directory,fname))
+
+        baselinevals = []
+        for movie_now,start,end in zip(movie_files,img_start_idx,img_end_idx):
+            img = Image.open(movie_now)
+        
+            
+            #dimensions = np.diff(ROI_coordinates.T).T[0]+1
+            for i in range(start,end):
+                try:
+                    img.seek(i)
+                    img.getpixel((1, 1))
+                    imarray = np.array(img)
+                    baselinevals.append(np.min(imarray))
+                    
+                   # break
+                except EOFError:
+                    print('Not enough frames in img')
+                    print(key)
+                    break
+        key['movie_base_line_pixel_values'] = baselinevals
+        key['movie_base_line_min'] = np.min(baselinevals)         
+        key['movie_base_line_mean'] = int(np.mean(baselinevals))
+        key['movie_base_line_median'] = int(np.median(baselinevals)               )
+        key['movie_base_line_max'] =np.max(baselinevals)         
+        self.insert1(key,skip_duplicates=True)   
+
+
+  
 
 @schema
 class MotionCorrectionMethod(dj.Lookup): 
@@ -89,8 +141,9 @@ class ROIType(dj.Lookup):
                     'VolPy_raw_dexpF0',
                     'VolPy_denoised_raw',
                     'VolPy_denoised_raw_dexpF0',
-                    'SpikePursuit_baseline_subtracted',
-                    'VolPy_baseline_subtracted'])
+                    'SpikePursuit_base_subtr',
+                    'SpikePursuit_base_subtr_mean',
+                    'VolPy_base_subtr'])
 
 @schema
 class ROI(dj.Imported): 
