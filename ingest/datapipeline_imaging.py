@@ -39,7 +39,7 @@ def moving_average(a, n=3) : # moving average
     
 def populatemytables_imaging():
     arguments = {'display_progress' : True, 'reserve_jobs' : False}
-    imaging.MovieBaseLineValue().populate(**arguments)
+    imaging.MovieBackGroundValue().populate(**arguments)
 
 @ray.remote
 def apply_motion_correction(movie,shifts):
@@ -497,7 +497,7 @@ def ROIEphysCorrelation_ROIAPwave_populate(key,movie_number,cellnum):
                                apstartidx = step_back - (np.diff(ap_dff[step_back-1::-1])<0).argmax()-1
                            else:
                                apstartidx = 0
-                           ap_peak_amplitude = ap_dff[apstartidx]-np.min(ap_dff[step_back-1:step_back+3])
+                           ap_peak_amplitude = np.mean(ap_dff[apstartidx-1:apstartidx+2])-ap_dff[step_back]
                            
 # =============================================================================
 #                            idxap,temp = scipy.signal.find_peaks(ap_dff_filt*-1)
@@ -1071,9 +1071,9 @@ def upload_gt_correlations_apwaves(cores = 3):
     ray.shutdown()
 
 @ray.remote
-def upload_baseline_subtracted_ROI_core(roi_key,roi_type):
+def upload_background_subtracted_ROI_core(roi_key,roi_type):
     #%
-    baseline_min = (imaging.MovieBaseLineValue()&roi_key).fetch1('movie_base_line_mean')
+    baseline_min = 1600 #(imaging.MovieBackGroundValue()&roi_key).fetch1('movie_background_mean')
     roi_now = (imaging.ROI()&roi_key).fetch(as_dict = True)[0]
     dff= roi_now['roi_dff']
     f0= roi_now['roi_f0']
@@ -1083,11 +1083,11 @@ def upload_baseline_subtracted_ROI_core(roi_key,roi_type):
     dff = (f-f0)/f0
     roi_now['roi_dff'] = dff
     roi_now['roi_f0'] =f0
-    roi_now['roi_type'] = roi_type+'_base_subtr_mean'
+    roi_now['roi_type'] = roi_type+'_base_subtr_c'
     #%
     imaging.ROI().insert1(roi_now, allow_direct_insert=True)
 
-def upload_baseline_subtracted_ROIs(roi_type='SpikePursuit',cores = 8):
+def upload_background_subtracted_ROIs(roi_type='SpikePursuit',cores = 8):
     #%
    # roi_type='SpikePursuit'
     ray.init(num_cpus = cores)
@@ -1095,9 +1095,9 @@ def upload_baseline_subtracted_ROIs(roi_type='SpikePursuit',cores = 8):
     roi_keys = (imaging.ROI()&'roi_type = "{}"'.format(roi_type)).fetch('subject_id','session' ,'movie_number' , 'motion_correction_method','roi_type','roi_number',as_dict=True)
     for roi_key in roi_keys:
         roi_out =roi_key.copy()
-        roi_out['roi_type'] = roi_type+'_base_subtr_mean'
+        roi_out['roi_type'] = roi_type+'_base_subtr_c'
         if len(imaging.ROI()&roi_out)==0:
-            result_ids.append(upload_baseline_subtracted_ROI_core.remote(roi_key.copy(),roi_type))
+            result_ids.append(upload_background_subtracted_ROI_core.remote(roi_key.copy(),roi_type))
     ray.get(result_ids)
     ray.shutdown()
         #%
