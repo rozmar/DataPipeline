@@ -47,7 +47,14 @@ def populatemytables_core_paralel(arguments,runround):
         behavioranal.SubjectFittedChoiceCoefficients3lpNRC.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficients3lpR.populate(**arguments)    
         behavioranal.SubjectFittedChoiceCoefficients3lpC.populate(**arguments)    
-        behavioranal.SubjectFittedChoiceCoefficients3lpNR.populate(**arguments)     
+        behavioranal.SubjectFittedChoiceCoefficients3lpNR.populate(**arguments) 
+        behavioranal.SubjectFittedChoiceCoefficients2lpRNRC.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpRC.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpRNR.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpNRC.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpR.populate(**arguments)    
+        behavioranal.SubjectFittedChoiceCoefficients2lpC.populate(**arguments)    
+        behavioranal.SubjectFittedChoiceCoefficients2lpNR.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsConvR.populate(**arguments) 
     if runround == 2:
         behavioranal.SessionPsychometricDataBoxCar.populate(**arguments)
@@ -97,6 +104,13 @@ def populatemytables_core(arguments,runround):
         behavioranal.SubjectFittedChoiceCoefficients3lpR.populate(**arguments)    
         behavioranal.SubjectFittedChoiceCoefficients3lpC.populate(**arguments)    
         behavioranal.SubjectFittedChoiceCoefficients3lpNR.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpRNRC.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpRC.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpRNR.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpNRC.populate(**arguments)
+        behavioranal.SubjectFittedChoiceCoefficients2lpR.populate(**arguments)    
+        behavioranal.SubjectFittedChoiceCoefficients2lpC.populate(**arguments)    
+        behavioranal.SubjectFittedChoiceCoefficients2lpNR.populate(**arguments)
         behavioranal.SubjectFittedChoiceCoefficientsConvR.populate(**arguments) 
     if runround == 2:
         behavioranal.SessionPsychometricDataBoxCar.populate(**arguments)
@@ -134,6 +148,13 @@ def populatemytables(paralel = True, cores = 9,del_tables = True):
                              behavioranal.SubjectFittedChoiceCoefficients3lpR() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectFittedChoiceCoefficients3lpC() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectFittedChoiceCoefficients3lpNR() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectFittedChoiceCoefficients2lpRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectFittedChoiceCoefficients2lpRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectFittedChoiceCoefficients2lpRNR() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectFittedChoiceCoefficients2lpNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                             behavioranal.SubjectFittedChoiceCoefficients2lpR() & 'subject_id = "' + str(subject_id_now)+'"',   
+                             behavioranal.SubjectFittedChoiceCoefficients2lpC() & 'subject_id = "' + str(subject_id_now)+'"',  
+                             behavioranal.SubjectFittedChoiceCoefficients2lpNR() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectFittedChoiceCoefficientsConvR() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SessionPsychometricDataFitted() & 'subject_id = "' + str(subject_id_now)+'"',
                              behavioranal.SubjectPsychometricCurveBoxCarFractional() & 'subject_id = "' + str(subject_id_now)+'"',
