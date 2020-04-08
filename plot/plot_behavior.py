@@ -22,7 +22,7 @@ def movingaverage(values, window):
     else:
         sma = values
     return sma
-
+#%%
 def draw_bs_pairs_linreg(x, y, size=1): 
     """Perform pairs bootstrap for linear regression."""#from serhan aya
 
@@ -372,9 +372,37 @@ def plotregressionaverage(wr_name = None, sessions = None):
     ax2.set_ylim([-.5, 1.5])
     
 
-def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects = []):
+def plot_regression_coefficients(plottype = 'NRC',
+                                 lickportnum = '3lp',
+                                 subjects = [],
+                                 trialstoshow = 15,
+                                 show_low_rr = False ,
+                                 show_high_rr = False,
+                                 show_block_start = False,
+                                 show_block_end = False):
+    #%%
     plt.rcParams.update({'font.size': 15})
-    trialstoshow = 15
+    cmap = cm.get_cmap('jet')
+    lowrrline = ':'
+    highrrline = '--' 
+    
+    blockstartline = ':'
+    blockendline = '--' 
+    
+    
+# =============================================================================
+#     plottype = 'NRC'
+#     lickportnum = '2lp'
+#     subjects = []
+#     show_low_rr = False   
+#     show_high_rr = False   
+#     show_block_start = True
+#     show_block_end = True
+#     trialstoshow = 15
+# =============================================================================
+    
+    
+    
     #trialstofit = 15
     df_subject_wr=pd.DataFrame(lab.WaterRestriction() * experiment.Session()* experiment.SessionDetails())
     subject_names = df_subject_wr['water_restriction_number'].unique()
@@ -389,48 +417,48 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNRC())
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsRNRC())
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients2lpRNRC())
             
     elif plottype == 'RNR':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRNR())
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsRNR())
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients2lpRNR())
     elif plottype == 'RC':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpRC())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsRC())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients2lpRC())    
         
     elif plottype == 'NRC':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNRC())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsNRC())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients2lpNRC())    
         
     elif plottype == 'R':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpR())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients2lpR())    
         
     elif plottype == 'NR':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpNR())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsOnlyUnRewardeds())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients2lpNR())    
         
     elif plottype == 'C':
         if lickportnum == '3lp':
             df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients3lpC())    
         elif lickportnum == '2lp':
-            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsOnlyChoices())    
+            df_coeff = pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficients2lpC())    
     fig=plt.figure()
     axs = list()
     if lickportnum == '3lp':
             sides = ['_right','_left','_middle']
     elif lickportnum == '2lp':
-            sides = ['']
+            sides = ['_right']
     
     for directionidx,direction in enumerate(sides):
         xoffset = 0
@@ -444,18 +472,58 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
             ax3=fig.add_axes([xoffset,-directionidx,1,.8])
     
         subject_names_legend = list()
-        wridxs = list()
+        #wridxs = list()
         subjectidxes = df_coeff['subject_id']== 'this is not a subject id'
-        for wr_name in subject_names:
+        for subject_idx_now,wr_name in enumerate(subject_names):
+            if subject_idx_now == len(subject_names)-1:
+                labelnow_l = 'low reward rate'
+                labelnow_h = 'high reward rate'
+                labelnow_blockstart = 'block start'
+                labelnow_blockend = 'block end'
+            else:
+                labelnow_l = None
+                labelnow_h = None
+                labelnow_blockstart = None
+                labelnow_blockend = None
+            subject_color = subject_idx_now/len(subject_names)
             subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
             idx = df_coeff['subject_id']==subject_id
             if sum(idx) == 1:
                 if plottype[0] == 'R':
-                    ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+direction][idx].values[0])
+                    ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+direction][idx].values[0],color = cmap(subject_color),label= wr_name)
+                    if show_low_rr:
+                        ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_low_rr'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_low_rr'][idx].values[0],lowrrline,color = cmap(subject_color),label=labelnow_l)
+                    if show_high_rr:
+                        ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_high_rr'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_high_rr'][idx].values[0],highrrline,color = cmap(subject_color),label=labelnow_h)                        
+                    if show_block_start:
+                        ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_start'][idx].values[0],blockstartline,color = cmap(subject_color),label=labelnow_blockstart)
+                    if show_block_end:
+                        ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_end'][idx].values[0],blockendline,color = cmap(subject_color),label=labelnow_blockend)                        
+                        
                 if 'NR' in plottype:    
-                    ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][idx].values[0])
+                    ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][idx].values[0],color = cmap(subject_color),label= wr_name)
+                    if show_low_rr:
+                        ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_low_rr'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_low_rr'][idx].values[0],lowrrline,color = cmap(subject_color),label=labelnow_l)
+                    if show_high_rr:
+                        ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_high_rr'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_high_rr'][idx].values[0],highrrline,color = cmap(subject_color),label=labelnow_h)                
+                    if show_block_start:
+                        ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'][idx].values[0],blockstartline,color = cmap(subject_color),label=labelnow_blockstart)
+                    if show_block_end:
+                        ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'][idx].values[0],blockendline,color = cmap(subject_color),label=labelnow_blockend)                        
+                    
                 if 'C' in plottype:    
-                    ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][idx].values[0])
+                    ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][idx].values[0],color = cmap(subject_color),label= wr_name)
+                    
+                    if show_low_rr:
+                        ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_low_rr'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_low_rr'][idx].values[0],lowrrline,color = cmap(subject_color),label=labelnow_l)
+                    if show_high_rr:
+                        ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_high_rr'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_high_rr'][idx].values[0],highrrline,color = cmap(subject_color),label=labelnow_h)
+                    if show_block_start:
+                        ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_start'][idx].values[0],blockstartline,color = cmap(subject_color),label=labelnow_blockstart)
+                    if show_block_end:
+                        ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_end'][idx].values[0],blockendline,color = cmap(subject_color),label=labelnow_blockend)                        
+                    
+                    
                 subject_names_legend.append(wr_name)
                 subjectidxes = subjectidxes | idx
         ax = dict()
@@ -463,8 +531,17 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
             ax1.set_xlabel('Choices back')
             ax1.set_ylabel('Coeff')
             ax1.set_title('Rewarded trials'+' - '+direction)
-            ax1.legend(subject_names_legend,fontsize='small',loc = 'upper right')
+            ax1.legend(fontsize='small',loc = 'upper right')#subject_names_legend
             ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction].mean())+1),df_coeff['coefficients_rewards_subject'+direction][subjectidxes].mean(),'k-',linewidth = 4)
+            if show_low_rr:
+                ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_low_rr'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_low_rr'][subjectidxes].mean(),'b'+lowrrline,linewidth = 4)
+            if show_high_rr:
+                ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_high_rr'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_high_rr'][subjectidxes].mean(),'r'+highrrline,linewidth = 4)
+            if show_block_start:
+                ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_start'][subjectidxes].mean(),'b'+blockstartline,linewidth = 4)
+            if show_block_end:
+                ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_end'][subjectidxes].mean(),'r'+blockendline,linewidth = 4)
+
             ax1.plot([0,len(df_coeff['coefficients_rewards_subject'+direction].mean())],[0,0],'k-')
             ax1.set_xlim([0, trialstoshow])
             ax['ax1'] = ax1
@@ -473,8 +550,17 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
             ax2.set_xlabel('Choices back')
             ax2.set_ylabel('Coeff')
             ax2.set_title('Unrewarded trials'+' - '+direction)
-            ax2.legend(subject_names_legend,fontsize='small',loc = 'upper right')
+            ax2.legend(fontsize='small',loc = 'upper right')#subject_names_legend
             ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][subjectidxes].mean(),'k-',linewidth = 4)
+            if show_low_rr:
+                ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_low_rr'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_low_rr'][subjectidxes].mean(),'b'+lowrrline,linewidth = 4)
+            if show_high_rr:
+                ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_high_rr'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_high_rr'][subjectidxes].mean(),'r'+highrrline,linewidth = 4)
+            if show_block_start:
+                ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'][subjectidxes].mean(),'b'+blockstartline,linewidth = 4)
+            if show_block_end:
+                ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'][subjectidxes].mean(),'r'+blockendline,linewidth = 4)
+                    
             ax2.plot([0,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())],[0,0],'k-')
             ax2.set_xlim([0, trialstoshow])
             ax['ax2'] = ax2
@@ -482,16 +568,40 @@ def plot_regression_coefficients(plottype = 'NRC',lickportnum = '3lp',subjects =
             ax3.set_xlabel('Choices back')
             ax3.set_ylabel('Coeff')
             ax3.set_title('Choices'+' - '+direction)
-            ax3.legend(subject_names_legend,fontsize='small',loc = 'upper right')
+            ax3.legend(fontsize='small',loc = 'upper right')#subject_names_legend
             ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][subjectidxes].mean(),'k-',linewidth = 4)
+            if show_low_rr:
+                ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_low_rr'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_low_rr'][subjectidxes].mean(),'b'+lowrrline,linewidth = 4)
+            if show_high_rr:
+                ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_high_rr'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_high_rr'][subjectidxes].mean(),'r'+highrrline,linewidth = 4)
+            if show_block_start:
+                ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_start'][subjectidxes].mean(),'b'+blockstartline,linewidth = 4)
+            if show_block_end:
+                ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_end'][subjectidxes].mean(),'r'+blockendline,linewidth = 4)
+            
+            
             ax3.plot([0,len(df_coeff['coefficients_choices_subject'+direction].mean())],[0,0],'k-')
             ax3.set_xlim([0, trialstoshow])
             ax['ax3'] = ax3
     
         axs.append(ax)
+        #%
+        plotylimits_low = list()
+        plotylimits_high =list()
+        for ax_now in axs:
+            axkeys = ax_now.keys()
+            for axkey in axkeys:
+                ax_now[axkey].autoscale(enable=True, axis='y', tight=True)
+                plotylimits_low.append(ax_now[axkey].get_ylim()[0])
+                plotylimits_high.append(ax_now[axkey].get_ylim()[1])
+        plotylimits = [np.min(plotylimits_low),np.max(plotylimits_high)]
+        for ax_now in axs:
+            axkeys = ax_now.keys()
+            for axkey in axkeys:
+                ax_now[axkey].set_ylim(plotylimits)  
 
 
-    
+  #%%  
 def plot_reward_rate(wr_name):
     subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
     key = {
