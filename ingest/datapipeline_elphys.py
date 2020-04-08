@@ -7,6 +7,7 @@ import datetime
 import time as timer
 import pandas as pd
 import numpy as np
+import scipy
 import datajoint as dj
 import os
 dj.conn()
@@ -23,6 +24,9 @@ def populatemytables_core_paralel(arguments,runround):
     elif runround == 2:
         ephysanal.SquarePulseSeriesResistance().populate(**arguments)
         ephysanal.SweepSeriesResistance().populate(**arguments)
+    elif runround == 3:
+        ephysanal.SweepResponseCorrected().populate(**arguments)
+    elif runround == 4:
         ephysanal.ActionPotential().populate(**arguments)
         ephysanal.ActionPotentialDetails().populate(**arguments)
         
@@ -34,12 +38,16 @@ def populatemytables_core(arguments,runround):
     elif runround == 2:
         ephysanal.SquarePulseSeriesResistance().populate(**arguments)
         ephysanal.SweepSeriesResistance().populate(**arguments)
+        extrapolate_sweep_series_resistance()
+    elif runround == 3:
+        ephysanal.SweepResponseCorrected().populate(**arguments)
+    elif runround == 4:
         ephysanal.ActionPotential().populate(**arguments)
         ephysanal.ActionPotentialDetails().populate(**arguments)
 def populatemytables(paralel=True,cores = 9):
     if paralel:
         ray.init(num_cpus = cores)
-        for runround in [1,2]:
+        for runround in [1,2,3,4]:
             arguments = {'display_progress' : False, 'reserve_jobs' : True,'order' : 'random'}
             print('round '+str(runround)+' of populate')
             result_ids = []
@@ -51,7 +59,7 @@ def populatemytables(paralel=True,cores = 9):
             
         ray.shutdown()
     else:
-        for runround in [1,2]:
+        for runround in [1,2,3,4]:
             arguments = {'display_progress' : True, 'reserve_jobs' : False}
             populatemytables_core(arguments,runround)
 
@@ -82,6 +90,60 @@ def read_h5f_metadata(metadata_h5):
                 metadata[key_0] = metadata_h5.attrs.get(key_0)
     return metadata
 #%%
+#%% 
+def extrapolate_sweep_series_resistance():
+    #%
+    subject_ids = np.unique((ephysanal.SweepSeriesResistance()&'series_resistance is null').fetch('subject_id'))
+    for subject_id in subject_ids:
+        print('extrapolating sweep series resistance for subject {}'.format(subject_id))
+        cell_numbers = np.unique((ephysanal.SweepSeriesResistance()&'series_resistance is null'&'subject_id = {}'.format(subject_id)).fetch('cell_number'))
+        for cell_number in cell_numbers:
+            #%
+            key = {'subject_id':subject_id,
+                   'cell_number':cell_number}
+            data_old = pd.DataFrame(ephysanal.SweepSeriesResistance()&key)
+            data = data_old.copy()
+            nones = data['series_resistance'].values==None
+            labels, nums = scipy.ndimage.label(nones)
+            for num in range(1,nums+1):
+                idxs_now = np.where(labels==num)[0]
+                if idxs_now[0]==0:
+                    data['series_resistance'][idxs_now]=data['series_resistance'][idxs_now[-1]+1]
+                    data['series_resistance_bridged'][idxs_now]=data['series_resistance_bridged'][idxs_now[-1]+1]
+                    data['series_resistance_residual'][idxs_now]=data['series_resistance_residual'][idxs_now[-1]+1]
+                elif idxs_now[-1]==len(data)-1:
+                    data['series_resistance'][idxs_now]=data['series_resistance'][idxs_now[0]-1]
+                    data['series_resistance_bridged'][idxs_now]=data['series_resistance_bridged'][idxs_now[0]-1]
+                    data['series_resistance_residual'][idxs_now]=data['series_resistance_residual'][idxs_now[0]-1]
+                else:
+                    rs_start = float(data['series_resistance'][idxs_now[0]-1])
+                    rs_end = float(data['series_resistance'][idxs_now[-1]+1])
+                    rss = np.arange(rs_start,rs_end,(rs_end-rs_start)/(len(idxs_now)+1))[:-1]
+                    data['series_resistance'][idxs_now] = rss
+                    data['series_resistance_bridged'][idxs_now] = data['series_resistance_bridged'][idxs_now[0]-1]
+                    data['series_resistance_residual'][idxs_now] = data['series_resistance'][idxs_now] - data['series_resistance_bridged'][idxs_now].astype(float)
+               #%
+            for row_old,row_new in zip(data_old.iterrows(),data.iterrows()):
+                row_old = dict(row_old[1])
+                row_new = dict(row_new[1] )
+                if row_old['series_resistance']  ==  None:
+                    del row_old['series_resistance']
+                    del row_old['series_resistance_bridged']
+                    del row_old['series_resistance_residual']
+                    dj.config['safemode'] = False
+                    (ephysanal.SweepSeriesResistance()&row_old).delete()
+                    dj.config['safemode'] = True  
+                    ephysanal.SweepSeriesResistance().insert1(row_new, allow_direct_insert=True)
+                    
+               
+            
+                    
+#%%
+                    
+                
+            print(cell_number)
+    #%%
+    
 def populateelphys():
   #%  
     df_subject_wr_sessions=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
