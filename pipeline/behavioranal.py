@@ -21,12 +21,24 @@ schema = dj.schema(get_schema_name('behavior-anal'),locals())
 
 
 #%%
-logistic_regression_trials_back = 15
+logistic_regression_trials_back = 10
 logistic_regression_first_session = 8
+logistic_regression_minimum_session_number = 10
 logistic_regression_max_bias = .9 # 0 = no bias, 1 = full bias
 block_reward_ratio_increment_step = 10
 block_reward_ratio_increment_window = 20
 block_reward_ratio_increment_max = 200
+#%%
+
+def moving_average(a, n=3) : # moving average 
+    if n>2:
+        begn = int(np.ceil(n/2))
+        endn = int(n-begn)-1
+        a = np.concatenate([a[begn::-1],a,a[:-endn:-1]])
+    ret = np.cumsum(a,axis = 0, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
+
 #%%
 def calculate_average_likelihood(local_income,choice,parameters):
     #%
@@ -327,15 +339,21 @@ def logistic_regression_on_trial_history(key, fittype):
                     return None
                     print('not enough data for' + wrnumber +' in '+ fittype)
 #%%
-def logistic_regression_on_trial_history_3lp(key, fittype):
+def logistic_regression_on_trial_history_3lp(key, fittype,lickportnum = 3):
 #%%
+    #key = {'subject_id': 457496}
+    trial_num_at_block_start_end = 20
     trials_back = logistic_regression_trials_back 
     first_session = logistic_regression_first_session
     max_bias = logistic_regression_max_bias
     if len((lab.WaterRestriction()&key).fetch('water_restriction_number'))>0:
         wrnumber = (lab.WaterRestriction()&key).fetch('water_restriction_number')[0]
-        df_bias = pd.DataFrame(SessionBias()*SessionTrainingType() & key & 'session >' +str(first_session-1) & 'session_task_protocol = 101')
-        if len(df_bias) > 0:
+        if lickportnum == 3:
+            session_task_protocol = 101
+        elif lickportnum == 2:
+            session_task_protocol = 100
+        df_bias = pd.DataFrame(SessionBias()*SessionTrainingType() & key & 'session >' +str(first_session-1) & 'session_task_protocol = {}'.format(session_task_protocol))
+        if len(df_bias) > logistic_regression_minimum_session_number:
             df_bias['biasval'] = df_bias.loc[:,['session_bias_choice_right','session_bias_choice_left','session_bias_middle']].T.max()
             sessionsneeded = (df_bias.loc[df_bias['biasval']<=max_bias,'session']).values
             df_behaviortrial_all = None
@@ -347,91 +365,135 @@ def logistic_regression_on_trial_history_3lp(key, fittype):
                     df_behaviortrial_all = df_behaviortrial_all.append(df_behaviortrial_now)
             #print(key)
             #%
+            
+            outcomes = df_behaviortrial_all['outcome'].values
+            if lickportnum == 3:
+                totalreward_p =df_behaviortrial_all['p_reward_left'].values + df_behaviortrial_all['p_reward_right'].values + df_behaviortrial_all['p_reward_middle'].values
+            elif lickportnum == 2:
+                totalreward_p =df_behaviortrial_all['p_reward_left'].values + df_behaviortrial_all['p_reward_right'].values
+            hits = outcomes=='hit'
+            reward_rate = moving_average(hits/totalreward_p,logistic_regression_trials_back) # normalized to total reward rate
+            medianrewardrate = np.median(reward_rate)
+            df_behaviortrial_all['reward_rate']=reward_rate
+            #trialnums_all = np.arange(len(outcomes))
+            #plt.plot(trialnums_all,reward_rate)
+            #hightrials = reward_rate>medianrewardrate
+            #plt.plot(trialnums_all[hightrials],reward_rate[hightrials],'ko')
+            #%
             if len(df_behaviortrial_all)>0:
-                for direction in ['left','right','middle']:
-                    label = list()
-                    data = list()
-                    sessions = np.unique(df_behaviortrial_all['session'])
-                    for session in sessions:
-                        if session >= first_session:
-                            df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
-                            idx = np.argsort(df_behaviortrial['trial'])
-                            outcomes = df_behaviortrial['outcome'].values[idx]
-                            choices = df_behaviortrial['trial_choice'].values[idx]
-                            choices_digitized = np.zeros(len(choices))
-                            choices_digitized[choices == direction]=1
-                            choices_digitized[(choices != direction) & (outcomes != 'ignore')]=-1
-                            rewards_digitized = choices_digitized.copy()
-                            rewards_digitized[outcomes=='miss']=0
-                            non_rewards_digitized = choices_digitized.copy()
-                            non_rewards_digitized[outcomes=='hit']=0
-                            for trial in range(trials_back,len(rewards_digitized)):
-                                if choices_digitized[trial] != 0:
-                                    label.append(choices_digitized[trial])
-                                    if fittype == 'RNRC':
-                                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
-                                    elif fittype == 'RC':
-                                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
-                                    elif fittype == 'NRC':
-                                        data.append(np.concatenate([non_rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
-                                    elif fittype == 'RNR':
-                                        data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
-                                    elif fittype == 'R':
-                                        data.append(rewards_digitized[trial-trials_back:trial])
-                                    elif fittype == 'NR':
-                                        data.append(non_rewards_digitized[trial-trials_back:trial])
-                                    elif fittype == 'C':
-                                        data.append(choices_digitized[trial-trials_back:trial])
+                for incomerate in ['','_low_rr','_high_rr','_block_start','_block_end']:
+                    for direction in ['left','right','middle']:
+                        if direction=='middle' and lickportnum==2:
+                            break
+                        label = list()
+                        data = list()
+                        sessions = np.unique(df_behaviortrial_all['session'])
+                        for session in sessions:
+                            if session >= first_session:
+                                #%
+                                df_behaviortrial=df_behaviortrial_all[df_behaviortrial_all['session']==session]
+                                idx = np.argsort(df_behaviortrial['trial'])
+                                outcomes = df_behaviortrial['outcome'].values[idx]
+                                choices = df_behaviortrial['trial_choice'].values[idx]
+                                choices_digitized = np.zeros(len(choices))
+                                choices_digitized[choices == direction]=1
+                                choices_digitized[(choices != direction) & (outcomes != 'ignore')]=-1
+                                rewards_digitized = choices_digitized.copy()
+                                rewards_digitized[outcomes=='miss']=0
+                                non_rewards_digitized = choices_digitized.copy()
+                                non_rewards_digitized[outcomes=='hit']=0
+                                reward_rates = df_behaviortrial['reward_rate'].values[idx]
+                                #%
+                                blockswitchtrials = np.where(np.concatenate([[0],np.diff(df_behaviortrial['block'][idx].values),[1]])>0)[0]
+                                blocklengths = np.concatenate([[blockswitchtrials[0]],np.diff(blockswitchtrials)])
+                                distance_from_prev_block = np.array([])
+                                distance_from_next_block = np.array([])
+                                for blockswitchtrial,blocklength in zip(blockswitchtrials,blocklengths):
+                                    np.arange(0,blocklength,1)
+                                    distance_from_prev_block = np.concatenate([distance_from_prev_block,np.arange(0,blocklength,1)])
+                                    distance_from_next_block = np.concatenate([distance_from_next_block,np.arange(0,blocklength,1)[::-1]])
+                                    
+                                #%
+                                for trial in range(trials_back,len(rewards_digitized)):
+                                    if incomerate == '':
+                                        neededtrial = True
+                                    elif incomerate == '_low_rr' and reward_rates[trial] <= medianrewardrate:
+                                        neededtrial = True
+                                    elif incomerate == '_high_rr' and reward_rates[trial] >medianrewardrate:
+                                        neededtrial = True
+                                    elif incomerate == '_block_start' and distance_from_prev_block[trial] < trial_num_at_block_start_end:
+                                        neededtrial = True
+                                    elif incomerate == '_block_end' and distance_from_next_block[trial] < trial_num_at_block_start_end:
+                                        neededtrial = True
                                     else:
-                                        print('unidentified fittype.. ERROR')
-                                        
-                    label = np.array(label)
-                    data = np.matrix(data)
-                    if len(data) > 1:
-                        x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
-                        logisticRegr = LogisticRegression(solver = 'lbfgs')
-                        logisticRegr.fit(x_train, y_train)
-                        #predictions = logisticRegr.predict(x_test)
-                        score = logisticRegr.score(x_test, y_test)        
-                        coefficients = logisticRegr.coef_
-                        coefficients = coefficients[0]
-                        if fittype == 'RNRC':
-                            coeff_rewards = coefficients[trials_back-1::-1]
-                            coeff_choices = coefficients[-trials_back-1:trials_back-1:-1]
-                            coeff_nonrewards = coefficients[-1:-trials_back-1:-1]
-                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
-                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
-                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
-                        elif fittype == 'RC':
-                            coeff_rewards = coefficients[trials_back-1::-1]
-                            coeff_choices = coefficients[-1:trials_back-1:-1]
-                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
-                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
-                        elif fittype == 'NRC':
-                            coeff_nonrewards = coefficients[trials_back-1::-1]
-                            coeff_choices = coefficients[-1:trials_back-1:-1]
-                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
-                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
-                        elif fittype == 'RNR':
-                            coeff_rewards = coefficients[trials_back-1::-1]
-                            coeff_nonrewards = coefficients[-1:trials_back-1:-1]
-                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
-                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
-                        elif fittype == 'R':
-                            coeff_rewards = coefficients[::-1]
-                            key['coefficients_rewards_subject'+'_'+direction] = coeff_rewards
-                        elif fittype == 'NR':
-                            coeff_nonrewards = coefficients[::-1]
-                            key['coefficients_nonrewards_subject'+'_'+direction] = coeff_nonrewards
-                        elif fittype == 'C':
-                            coeff_choices = coefficients[::-1]
-                            key['coefficients_choices_subject'+'_'+direction] = coeff_choices
-                        key['score_subject'+'_'+direction] = score
-                    else:
-                        print('not enough data for' + wrnumber +' in '+ fittype)                    
-                        return None
-                        
-                        #%
+                                        neededtrial = False
+                                    
+                                    if choices_digitized[trial] != 0 and neededtrial:
+                                        label.append(choices_digitized[trial])
+                                        if fittype == 'RNRC':
+                                            data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
+                                        elif fittype == 'RC':
+                                            data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+                                        elif fittype == 'NRC':
+                                            data.append(np.concatenate([non_rewards_digitized[trial-trials_back:trial],choices_digitized[trial-trials_back:trial]]))
+                                        elif fittype == 'RNR':
+                                            data.append(np.concatenate([rewards_digitized[trial-trials_back:trial],non_rewards_digitized[trial-trials_back:trial]]))
+                                        elif fittype == 'R':
+                                            data.append(rewards_digitized[trial-trials_back:trial])
+                                        elif fittype == 'NR':
+                                            data.append(non_rewards_digitized[trial-trials_back:trial])
+                                        elif fittype == 'C':
+                                            data.append(choices_digitized[trial-trials_back:trial])
+                                        else:
+                                            print('unidentified fittype.. ERROR')
+                                            
+                        label = np.array(label)
+                        data = np.matrix(data)
+                        if len(data) > 1:
+                            x_train, x_test, y_train, y_test = train_test_split(data, label, test_size=0.15, random_state=0)
+                            logisticRegr = LogisticRegression(solver = 'lbfgs')
+                            logisticRegr.fit(x_train, y_train)
+                            #predictions = logisticRegr.predict(x_test)
+                            score = logisticRegr.score(x_test, y_test)        
+                            coefficients = logisticRegr.coef_
+                            coefficients = coefficients[0]
+                            if fittype == 'RNRC':
+                                coeff_rewards = coefficients[trials_back-1::-1]
+                                coeff_choices = coefficients[-trials_back-1:trials_back-1:-1]
+                                coeff_nonrewards = coefficients[-1:-trials_back-1:-1]
+                                key['coefficients_rewards_subject'+'_'+direction+incomerate] = coeff_rewards
+                                key['coefficients_choices_subject'+'_'+direction+incomerate] = coeff_choices
+                                key['coefficients_nonrewards_subject'+'_'+direction+incomerate] = coeff_nonrewards
+                            elif fittype == 'RC':
+                                coeff_rewards = coefficients[trials_back-1::-1]
+                                coeff_choices = coefficients[-1:trials_back-1:-1]
+                                key['coefficients_rewards_subject'+'_'+direction+incomerate] = coeff_rewards
+                                key['coefficients_choices_subject'+'_'+direction+incomerate] = coeff_choices
+                            elif fittype == 'NRC':
+                                coeff_nonrewards = coefficients[trials_back-1::-1]
+                                coeff_choices = coefficients[-1:trials_back-1:-1]
+                                key['coefficients_nonrewards_subject'+'_'+direction+incomerate] = coeff_nonrewards
+                                key['coefficients_choices_subject'+'_'+direction+incomerate] = coeff_choices
+                            elif fittype == 'RNR':
+                                coeff_rewards = coefficients[trials_back-1::-1]
+                                coeff_nonrewards = coefficients[-1:trials_back-1:-1]
+                                key['coefficients_rewards_subject'+'_'+direction+incomerate] = coeff_rewards
+                                key['coefficients_nonrewards_subject'+'_'+direction+incomerate] = coeff_nonrewards
+                            elif fittype == 'R':
+                                coeff_rewards = coefficients[::-1]
+                                key['coefficients_rewards_subject'+'_'+direction+incomerate] = coeff_rewards
+                            elif fittype == 'NR':
+                                coeff_nonrewards = coefficients[::-1]
+                                key['coefficients_nonrewards_subject'+'_'+direction+incomerate] = coeff_nonrewards
+                            elif fittype == 'C':
+                                coeff_choices = coefficients[::-1]
+                                key['coefficients_choices_subject'+'_'+direction+incomerate] = coeff_choices
+                            key['score_subject'+'_'+direction+incomerate] = score
+                        else:
+                            print('not enough data for' + wrnumber +' in '+ fittype)                    
+                            return None
+                            
+                            #%
                 print(wrnumber + ' coefficients fitted for ' + fittype)
                 return key
             else:
@@ -439,7 +501,7 @@ def logistic_regression_on_trial_history_3lp(key, fittype):
                 return None
                 
 
-#%
+#%%
 def logistic_regression_on_trial_history_convolved(key, fittype):
     #%
     filter_time_constants = np.arange(1,25,2)
@@ -1481,10 +1543,65 @@ class SubjectFittedChoiceCoefficients3lpRNRC(dj.Computed):
     coefficients_nonrewards_subject_middle  : longblob
     coefficients_choices_subject_middle  : longblob
     score_subject_middle :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null : longblob
+    coefficients_nonrewards_subject_left_low_rr = null : longblob
+    coefficients_choices_subject_left_low_rr = null : longblob
+    score_subject_left_low_rr = null :  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null : longblob
+    coefficients_nonrewards_subject_right_low_rr = null : longblob
+    coefficients_choices_subject_right_low_rr = null : longblob
+    score_subject_right_low_rr = null :  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    coefficients_nonrewards_subject_middle_low_rr  = null: longblob
+    coefficients_choices_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    coefficients_nonrewards_subject_left_high_rr  = null: longblob
+    coefficients_choices_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    coefficients_nonrewards_subject_right_high_rr  = null: longblob
+    coefficients_choices_subject_right_high_rr  = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    coefficients_nonrewards_subject_middle_high_rr  = null: longblob
+    coefficients_choices_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null : longblob
+    coefficients_nonrewards_subject_left_block_start = null : longblob
+    coefficients_choices_subject_left_block_start = null : longblob
+    score_subject_left_block_start = null :  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null : longblob
+    coefficients_nonrewards_subject_right_block_start = null : longblob
+    coefficients_choices_subject_right_block_start = null : longblob
+    score_subject_right_block_start = null :  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    coefficients_nonrewards_subject_middle_block_start  = null: longblob
+    coefficients_choices_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+
+    coefficients_rewards_subject_left_block_end = null: longblob
+    coefficients_nonrewards_subject_left_block_end  = null: longblob
+    coefficients_choices_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    coefficients_nonrewards_subject_right_block_end  = null: longblob
+    coefficients_choices_subject_right_block_end  = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    coefficients_nonrewards_subject_middle_block_end  = null: longblob
+    coefficients_choices_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
     """    
     def make(self, key):
+        #%
         key  = logistic_regression_on_trial_history_3lp(key, 'RNRC')
         if key and len(key.keys())>1:
+            #print(key)
+            #self.insert1(key,skip_duplicates=True)    
             try:
                 self.insert1(key,skip_duplicates=True)    
             except:
@@ -1507,6 +1624,47 @@ class SubjectFittedChoiceCoefficients3lpRC(dj.Computed):
     coefficients_rewards_subject_middle : longblob
     coefficients_choices_subject_middle  : longblob
     score_subject_middle :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null: longblob
+    coefficients_choices_subject_left_low_rr  = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null: longblob
+    coefficients_choices_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    coefficients_choices_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    coefficients_choices_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    coefficients_choices_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    coefficients_choices_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null: longblob
+    coefficients_choices_subject_left_block_start  = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null: longblob
+    coefficients_choices_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    coefficients_choices_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_end = null: longblob
+    coefficients_choices_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    coefficients_choices_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    coefficients_choices_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    
     """    
     def make(self, key):
         key  = logistic_regression_on_trial_history_3lp(key, 'RC')
@@ -1529,6 +1687,46 @@ class SubjectFittedChoiceCoefficients3lpNRC(dj.Computed):
     coefficients_nonrewards_subject_middle : longblob
     coefficients_choices_subject_middle  : longblob
     score_subject_middle :  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_low_rr = null: longblob
+    coefficients_choices_subject_left_low_rr  = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_low_rr = null: longblob
+    coefficients_choices_subject_right_low_rr  = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_low_rr = null: longblob
+    coefficients_choices_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_high_rr = null: longblob
+    coefficients_choices_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_high_rr = null: longblob
+    coefficients_choices_subject_right_high_rr  = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_high_rr = null: longblob
+    coefficients_choices_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_start = null: longblob
+    coefficients_choices_subject_left_block_start  = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_start = null: longblob
+    coefficients_choices_subject_right_block_start  = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_start = null: longblob
+    coefficients_choices_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_end = null: longblob
+    coefficients_choices_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_end = null: longblob
+    coefficients_choices_subject_right_block_end  = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_end = null: longblob
+    coefficients_choices_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
     """    
     def make(self, key):
         key  = logistic_regression_on_trial_history_3lp(key, 'NRC')
@@ -1549,6 +1747,46 @@ class SubjectFittedChoiceCoefficients3lpRNR(dj.Computed):
     coefficients_rewards_subject_middle : longblob
     coefficients_nonrewards_subject_middle  : longblob
     score_subject_middle :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null: longblob
+    coefficients_nonrewards_subject_left_low_rr  = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null: longblob
+    coefficients_nonrewards_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    coefficients_nonrewards_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    coefficients_nonrewards_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    coefficients_nonrewards_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    coefficients_nonrewards_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null: longblob
+    coefficients_nonrewards_subject_left_block_start  = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null: longblob
+    coefficients_nonrewards_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    coefficients_nonrewards_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_end = null: longblob
+    coefficients_nonrewards_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    coefficients_nonrewards_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    coefficients_nonrewards_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
     """    
     def make(self, key):
         key  = logistic_regression_on_trial_history_3lp(key, 'RNR')
@@ -1566,6 +1804,34 @@ class SubjectFittedChoiceCoefficients3lpR(dj.Computed):
     score_subject_right :  decimal(8,4)
     coefficients_rewards_subject_middle : longblob
     score_subject_middle :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_end = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
     """    
     def make(self, key):
         key  = logistic_regression_on_trial_history_3lp(key, 'R')
@@ -1583,6 +1849,34 @@ class SubjectFittedChoiceCoefficients3lpNR(dj.Computed):
     score_subject_right :  decimal(8,4)
     coefficients_nonrewards_subject_middle : longblob
     score_subject_middle :  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_low_rr = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_low_rr = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_high_rr = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_high_rr = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_start = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_start = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_end = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_end = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
     """    
     def make(self, key):
         key  = logistic_regression_on_trial_history_3lp(key, 'NR')
@@ -1600,6 +1894,34 @@ class SubjectFittedChoiceCoefficients3lpC(dj.Computed):
     score_subject_right :  decimal(8,4)
     coefficients_choices_subject_middle : longblob
     score_subject_middle :  decimal(8,4)
+    
+    coefficients_choices_subject_left_low_rr = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_choices_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_choices_subject_middle_low_rr = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_choices_subject_left_high_rr = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_choices_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_choices_subject_middle_high_rr = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_choices_subject_left_block_start = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_choices_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_choices_subject_middle_block_start = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_choices_subject_left_block_end = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_choices_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_choices_subject_middle_block_end = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
     """    
     def make(self, key):
         key  = logistic_regression_on_trial_history_3lp(key, 'C')
@@ -1607,7 +1929,408 @@ class SubjectFittedChoiceCoefficients3lpC(dj.Computed):
             self.insert1(key,skip_duplicates=True)
 
 
+@schema
+class SubjectFittedChoiceCoefficients2lpRNRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    coefficients_nonrewards_subject_left  : longblob
+    coefficients_choices_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    coefficients_nonrewards_subject_right  : longblob
+    coefficients_choices_subject_right  : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle = null : longblob
+    coefficients_nonrewards_subject_middle = null  : longblob
+    coefficients_choices_subject_middle = null : longblob
+    score_subject_middle = null :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null : longblob
+    coefficients_nonrewards_subject_left_low_rr = null : longblob
+    coefficients_choices_subject_left_low_rr = null : longblob
+    score_subject_left_low_rr = null :  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null : longblob
+    coefficients_nonrewards_subject_right_low_rr = null : longblob
+    coefficients_choices_subject_right_low_rr = null : longblob
+    score_subject_right_low_rr = null :  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    coefficients_nonrewards_subject_middle_low_rr  = null: longblob
+    coefficients_choices_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    coefficients_nonrewards_subject_left_high_rr  = null: longblob
+    coefficients_choices_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    coefficients_nonrewards_subject_right_high_rr  = null: longblob
+    coefficients_choices_subject_right_high_rr  = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    coefficients_nonrewards_subject_middle_high_rr  = null: longblob
+    coefficients_choices_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null : longblob
+    coefficients_nonrewards_subject_left_block_start = null : longblob
+    coefficients_choices_subject_left_block_start = null : longblob
+    score_subject_left_block_start = null :  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null : longblob
+    coefficients_nonrewards_subject_right_block_start = null : longblob
+    coefficients_choices_subject_right_block_start = null : longblob
+    score_subject_right_block_start = null :  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    coefficients_nonrewards_subject_middle_block_start  = null: longblob
+    coefficients_choices_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+
+    coefficients_rewards_subject_left_block_end = null: longblob
+    coefficients_nonrewards_subject_left_block_end  = null: longblob
+    coefficients_choices_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    coefficients_nonrewards_subject_right_block_end  = null: longblob
+    coefficients_choices_subject_right_block_end  = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    coefficients_nonrewards_subject_middle_block_end  = null: longblob
+    coefficients_choices_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    """    
+    def make(self, key):
+        #%
+        key  = logistic_regression_on_trial_history_3lp(key, 'RNRC',lickportnum = 2)
+        if key and len(key.keys())>1:
+            #print(key)
+            self.insert1(key,skip_duplicates=True)    
+            try:
+                self.insert1(key,skip_duplicates=True)    
+            except:
+                print('problem with inserting coefficient')
+                print(key)
+                    
+        
+
+@schema
+class SubjectFittedChoiceCoefficients2lpRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    coefficients_choices_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    coefficients_choices_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle = null : longblob
+    coefficients_choices_subject_middle = null  : longblob
+    score_subject_middle = null :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null: longblob
+    coefficients_choices_subject_left_low_rr  = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null: longblob
+    coefficients_choices_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    coefficients_choices_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    coefficients_choices_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    coefficients_choices_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    coefficients_choices_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null: longblob
+    coefficients_choices_subject_left_block_start  = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null: longblob
+    coefficients_choices_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    coefficients_choices_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_end = null: longblob
+    coefficients_choices_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    coefficients_choices_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    coefficients_choices_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'RC',lickportnum = 2)
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+
+                        
+                    
+@schema
+class SubjectFittedChoiceCoefficients2lpNRC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_nonrewards_subject_left : longblob
+    coefficients_choices_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_nonrewards_subject_right : longblob
+    coefficients_choices_subject_right  : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_nonrewards_subject_middle = null : longblob
+    coefficients_choices_subject_middle = null  : longblob
+    score_subject_middle = null :  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_low_rr = null: longblob
+    coefficients_choices_subject_left_low_rr  = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_low_rr = null: longblob
+    coefficients_choices_subject_right_low_rr  = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_low_rr = null: longblob
+    coefficients_choices_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_high_rr = null: longblob
+    coefficients_choices_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_high_rr = null: longblob
+    coefficients_choices_subject_right_high_rr  = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_high_rr = null: longblob
+    coefficients_choices_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_start = null: longblob
+    coefficients_choices_subject_left_block_start  = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_start = null: longblob
+    coefficients_choices_subject_right_block_start  = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_start = null: longblob
+    coefficients_choices_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_end = null: longblob
+    coefficients_choices_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_end = null: longblob
+    coefficients_choices_subject_right_block_end  = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_end = null: longblob
+    coefficients_choices_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'NRC',lickportnum = 2)
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
  
+@schema
+class SubjectFittedChoiceCoefficients2lpRNR(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    coefficients_nonrewards_subject_left  : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    coefficients_nonrewards_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle = null : longblob
+    coefficients_nonrewards_subject_middle = null  : longblob
+    score_subject_middle = null :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null: longblob
+    coefficients_nonrewards_subject_left_low_rr  = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null: longblob
+    coefficients_nonrewards_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    coefficients_nonrewards_subject_middle_low_rr  = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    coefficients_nonrewards_subject_left_high_rr  = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    coefficients_nonrewards_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    coefficients_nonrewards_subject_middle_high_rr  = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null: longblob
+    coefficients_nonrewards_subject_left_block_start  = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null: longblob
+    coefficients_nonrewards_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    coefficients_nonrewards_subject_middle_block_start  = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_end = null: longblob
+    coefficients_nonrewards_subject_left_block_end  = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    coefficients_nonrewards_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    coefficients_nonrewards_subject_middle_block_end  = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'RNR',lickportnum = 2)
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)               
+
+@schema
+class SubjectFittedChoiceCoefficients2lpR(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_rewards_subject_left : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_rewards_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_rewards_subject_middle = null : longblob
+    score_subject_middle = null :  decimal(8,4)
+    
+    coefficients_rewards_subject_left_low_rr = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_low_rr = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_high_rr = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_high_rr = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_start = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_start = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_rewards_subject_left_block_end = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_rewards_subject_middle_block_end = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'R',lickportnum = 2)
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+    
+@schema
+class SubjectFittedChoiceCoefficients2lpNR(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_nonrewards_subject_left : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_nonrewards_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_nonrewards_subject_middle = null : longblob
+    score_subject_middle = null :  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_low_rr = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_low_rr = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_high_rr = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_high_rr = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_start = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_start = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_nonrewards_subject_left_block_end = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_nonrewards_subject_middle_block_end = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'NR',lickportnum = 2)
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+
+@schema
+class SubjectFittedChoiceCoefficients2lpC(dj.Computed):    
+    definition = """
+    -> lab.Subject
+    ---
+    coefficients_choices_subject_left : longblob
+    score_subject_left :  decimal(8,4)
+    coefficients_choices_subject_right : longblob
+    score_subject_right :  decimal(8,4)
+    coefficients_choices_subject_middle = null : longblob
+    score_subject_middle = null :  decimal(8,4)
+    
+    coefficients_choices_subject_left_low_rr = null: longblob
+    score_subject_left_low_rr = null:  decimal(8,4)
+    coefficients_choices_subject_right_low_rr = null: longblob
+    score_subject_right_low_rr = null:  decimal(8,4)
+    coefficients_choices_subject_middle_low_rr = null: longblob
+    score_subject_middle_low_rr = null:  decimal(8,4)
+    
+    coefficients_choices_subject_left_high_rr = null: longblob
+    score_subject_left_high_rr = null:  decimal(8,4)
+    coefficients_choices_subject_right_high_rr = null: longblob
+    score_subject_right_high_rr = null:  decimal(8,4)
+    coefficients_choices_subject_middle_high_rr = null: longblob
+    score_subject_middle_high_rr = null:  decimal(8,4)
+    
+    coefficients_choices_subject_left_block_start = null: longblob
+    score_subject_left_block_start = null:  decimal(8,4)
+    coefficients_choices_subject_right_block_start = null: longblob
+    score_subject_right_block_start = null:  decimal(8,4)
+    coefficients_choices_subject_middle_block_start = null: longblob
+    score_subject_middle_block_start = null:  decimal(8,4)
+    
+    coefficients_choices_subject_left_block_end = null: longblob
+    score_subject_left_block_end = null:  decimal(8,4)
+    coefficients_choices_subject_right_block_end = null: longblob
+    score_subject_right_block_end = null:  decimal(8,4)
+    coefficients_choices_subject_middle_block_end = null: longblob
+    score_subject_middle_block_end = null:  decimal(8,4)
+    """    
+    def make(self, key):
+        key  = logistic_regression_on_trial_history_3lp(key, 'C',lickportnum = 2)
+        if key and len(key.keys())>1:
+            self.insert1(key,skip_duplicates=True)
+
 
 @schema
 class SubjectFittedChoiceCoefficientsVSTime(dj.Computed):    ## TODO: BIAS correction
