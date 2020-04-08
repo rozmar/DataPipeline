@@ -47,15 +47,15 @@ class MovieFile(dj.Imported): #MovieFile
 
 
 @schema
-class MovieBaseLineValue(dj.Computed):
+class MovieBackGroundValue(dj.Computed):
     definition = """
     -> Movie 
     ---
-    movie_base_line_pixel_values     : longblob          # minimum pixel value of the movie for each frame
-    movie_base_line_min              : int # absolute minimum
-    movie_base_line_mean             : int # mean
-    movie_base_line_median           : int # median
-    movie_base_line_max              : int # max
+    movie_background_pixel_values     : longblob          # minimum pixel value of the movie for each frame
+    movie_background_min              : int # absolute minimum
+    movie_background_mean             : int # mean
+    movie_background_median           : int # median
+    movie_background_max              : int # max
     """
     def make(self, key):
         #%%
@@ -85,11 +85,11 @@ class MovieBaseLineValue(dj.Computed):
                     print('Not enough frames in img')
                     print(key)
                     break
-        key['movie_base_line_pixel_values'] = baselinevals
-        key['movie_base_line_min'] = np.min(baselinevals)         
-        key['movie_base_line_mean'] = int(np.mean(baselinevals))
-        key['movie_base_line_median'] = int(np.median(baselinevals)               )
-        key['movie_base_line_max'] =np.max(baselinevals)         
+        key['movie_background_pixel_values'] = baselinevals
+        key['movie_background_min'] = np.min(baselinevals)         
+        key['movie_background_mean'] = int(np.mean(baselinevals))
+        key['movie_background_median'] = int(np.median(baselinevals)               )
+        key['movie_background_max'] =np.max(baselinevals)         
         self.insert1(key,skip_duplicates=True)   
 
 
@@ -143,6 +143,7 @@ class ROIType(dj.Lookup):
                     'VolPy_denoised_raw_dexpF0',
                     'SpikePursuit_base_subtr',
                     'SpikePursuit_base_subtr_mean',
+                    'SpikePursuit_base_subtr_c',
                     'VolPy_base_subtr'])
 
 @schema
