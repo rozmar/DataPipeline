@@ -27,20 +27,24 @@ class ActionPotential(dj.Computed):
         #print(key)
         keynow = key.copy()
         if len(ActionPotential()&keynow) == 0:
-            pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(ephys_patch.SweepResponse()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
+            #%%
+            pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(SweepResponseCorrected()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
             if len(pd_sweep)>0:
-                trace = pd_sweep['response_trace'].values[0]
+                trace = pd_sweep['response_trace_corrected'].values[0]
                 sr = pd_sweep['sample_rate'][0]
                 si = 1/sr
+                msstep = int(.0005/si)
                 sigma = .00005
                 trace_f = ndimage.gaussian_filter(trace,sigma/si)
                 d_trace_f = np.diff(trace_f)/si
                 peaks = d_trace_f > 40
+                sp_starts,sp_ends =(SquarePulse()&key).fetch('square_pulse_start_idx','square_pulse_end_idx') 
+                squarepulses = np.concatenate([sp_starts,sp_ends])
+                for sqidx in squarepulses:
+                    peaks[sqidx-msstep:sqidx+msstep] = False
                 peaks = ndimage.morphology.binary_dilation(peaks,np.ones(int(round(.002/si))))
-        
                 spikemaxidxes = list()
                 while np.any(peaks):
-                    #%%
                     spikestart = np.argmax(peaks)
                     spikeend = np.argmin(peaks[spikestart:])+spikestart
                     if spikestart == spikeend:
@@ -53,7 +57,7 @@ class ActionPotential(dj.Computed):
                         sipeidx = np.argmax(trace[spikestart:spikeend])+spikestart
                     spikemaxidxes.append(sipeidx)
                     peaks[spikestart:spikeend] = False
-                    #%%
+                    #%
                 if len(spikemaxidxes)>0:
                     spikemaxtimes = spikemaxidxes/sr + float(pd_sweep['sweep_start_time'].values[0])
                     spikenumbers = np.arange(len(spikemaxidxes))+1
@@ -71,11 +75,12 @@ class ActionPotentialDetails(dj.Computed):
     definition = """
     -> ActionPotential
     ---
-    ap_real : tinyint # 1 if real AP
-    ap_threshold : float # mV
-    ap_threshold_index : int #
-    ap_halfwidth : float # ms
-    ap_amplitude : float # mV
+    ap_real                : tinyint # 1 if real AP
+    ap_threshold           : float # mV
+    ap_threshold_index     : int #
+    ap_baseline_value      : float # mV average of 10 ms right before the threshold
+    ap_halfwidth           : float # ms
+    ap_amplitude           : float # mV
     ap_dv_max : float # mV/ms
     ap_dv_max_voltage : float # mV
     ap_dv_min : float # mV/ms
@@ -85,7 +90,8 @@ class ActionPotentialDetails(dj.Computed):
         #%%
         sigma = .00003 # seconds for filering
         step_time = .0001 # seconds
-        threshold_value = 10 # mV/ms
+        threshold_value = 5 # mV/ms
+        baseline_length = .01 #s back from threshold
         #%%
 # =============================================================================
 #         key = {'subject_id': 454263, 'session': 1, 'cell_number': 1, 'sweep_number': 56, 'ap_num': 30}
@@ -93,13 +99,13 @@ class ActionPotentialDetails(dj.Computed):
 # =============================================================================
         keynow = key.copy()
         del keynow['ap_num']
-        pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(ephys_patch.SweepResponse()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
+        pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(SweepResponseCorrected()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
         pd_ap = pd.DataFrame(ActionPotential()&keynow)
         #%%
         if len(pd_ap)>0 and len(ActionPotentialDetails()&dict(pd_ap.loc[0])) == 0:
             #%%
-            print(key)
-            trace = pd_sweep['response_trace'].values[0]
+            #print(key)
+            trace = pd_sweep['response_trace_corrected'].values[0]
             sr = pd_sweep['sample_rate'][0]
             si = 1/sr
             step_size = int(np.round(step_time/si))
@@ -107,6 +113,7 @@ class ActionPotentialDetails(dj.Computed):
             trace_f = ndimage.gaussian_filter(trace,sigma/si)
             d_trace_f = np.diff(trace_f)/si
             tracelength = len(trace)
+            baseline_step = int(np.round(baseline_length/si))
             #%%
             keylist = list()
             for ap_now in pd_ap.iterrows():
@@ -141,12 +148,18 @@ class ActionPotentialDetails(dj.Computed):
                 hw_step_forward = np.argmax(trace_f[ap_max_index:ap_max_index+ms5_step]<ap_threshold+ap_amplitude/2)
                 ap_halfwidth = (hw_step_back+hw_step_forward)*si
                 
+                
+                
                 if ap_amplitude > .01 and ap_halfwidth>.0001:
                     ap_now['ap_real'] = 1
                 else:
                     ap_now['ap_real'] = 0
                 ap_now['ap_threshold'] = ap_threshold*1000
                 ap_now['ap_threshold_index'] = thresh_index
+                if thresh_index>10:
+                    ap_now['ap_baseline_value'] = np.mean(trace_f[np.max([thresh_index - baseline_step,0]) : thresh_index])*1000
+                else:
+                    ap_now['ap_baseline_value'] = ap_threshold*1000
                 ap_now['ap_halfwidth'] =  ap_halfwidth*1000
                 ap_now['ap_amplitude'] =  ap_amplitude*1000
                 ap_now['ap_dv_max'] = d_trace_f[dvmax_index]
@@ -195,7 +208,7 @@ class SquarePulse(dj.Computed):
         
         pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
         if len(pd_sweep)>0:
-            
+            #%%
             stim = pd_sweep['stimulus_trace'].values[0]
             sr = pd_sweep['sample_rate'].values[0]
             sweepstart = pd_sweep['sweep_start_time'].values[0]
@@ -216,6 +229,7 @@ class SquarePulse(dj.Computed):
                 key['square_pulse_start_time'] = stimstart/sr + float(sweepstart)
                 key['square_pulse_length'] = (stimend-stimstart)/sr
                 key['square_pulse_amplitude'] = amplitude
+                #%%
                 self.insert1(key,skip_duplicates=True)
             
 @schema
@@ -226,6 +240,7 @@ class SquarePulseSeriesResistance(dj.Computed):
     series_resistance_squarepulse: decimal(8,2) # series resistance in MOhms 
     """    
     def make(self, key):
+        #%%
         time_back = .0002
         time_capacitance = .0001
         time_forward = .0002
@@ -282,7 +297,48 @@ class SweepSeriesResistance(dj.Computed):
             key['series_resistance'] = rs_residual + bridgeR
         self.insert1(key,skip_duplicates=True)
         #%%
-        
+@schema       
+class SweepResponseCorrected(dj.Computed):
+    definition = """
+    -> ephys_patch.Sweep
+    ---
+    response_trace_corrected  : longblob #
+    """
+    def make(self, key):
+       
+        try:
+             #%
+           # key={'subject_id': 463291, 'session': 1, 'cell_number': 0, 'sweep_number': 64}#{'subject_id': 466769, 'session': 1, 'cell_number': 2, 'sweep_number': 45}
+            junction_potential = 13.5/1000 #mV
+            e_sr= (ephys_patch.SweepMetadata()&key).fetch1('sample_rate')
+            uncompensatedRS =  float((SweepSeriesResistance()&key).fetch1('series_resistance_residual'))
+            v = (ephys_patch.SweepResponse()&key).fetch1('response_trace')
+            i = (ephys_patch.SweepStimulus()&key).fetch1('stimulus_trace')
+            tau_1_on =.1/1000
+            t = np.arange(0,.001,1/e_sr)
+            f_on = np.exp(t/tau_1_on) 
+            f_on = f_on/np.max(f_on)
+            kernel = np.concatenate([f_on,np.zeros(len(t))])[::-1]
+            kernel  = kernel /sum(kernel )  
+            i_conv = np.convolve(i,kernel,'same')
+            v_comp = (v - i_conv*uncompensatedRS*10**6) - junction_potential
+            key['response_trace_corrected'] = v_comp
+            #%
+            self.insert1(key,skip_duplicates=True)
+        except:
+            print(key)
+# =============================================================================
+#         downsample_factor = int(np.round(e_sr/downsampled_rate))
+#         #%downsampling
+#         v_out = moving_average(v_comp, n=downsample_factor)
+#         v_out = v_out[int(downsample_factor/2)::downsample_factor]
+#         i_out = moving_average(i, n=downsample_factor)
+#         i_out = i_out[int(downsample_factor/2)::downsample_factor]
+#         t_out = moving_average(trace_t, n=downsample_factor)
+#         t_out = t_out[int(downsample_factor/2)::downsample_factor]
+# =============================================================================
+    
+
 @schema
 class SweepFrameTimes(dj.Computed):
     definition = """
