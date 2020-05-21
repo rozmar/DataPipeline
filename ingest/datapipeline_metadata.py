@@ -12,19 +12,19 @@ from pipeline import lab, experiment
 def populatemetadata():
     #%% save metadata from google drive if necessairy
     lastmodify = online_notebook.fetch_lastmodify_time_animal_metadata()
-    with open(dj.config['locations.metadata_behavior']+'last_modify_time.json') as timedata:
+    with open(dj.config['locations.metadata_surgery_experiment']+'last_modify_time.json') as timedata:
         lastmodify_prev = json.loads(timedata.read())
     if lastmodify != lastmodify_prev:
         print('updating surgery and WR metadata from google drive')
-        dj.config['locations.metadata_behavior']
+        dj.config['locations.metadata_surgery_experiment']
         df_surgery = online_notebook.fetch_animal_metadata()
-        df_surgery.to_csv(dj.config['locations.metadata_behavior']+'Surgery.csv')
+        df_surgery.to_csv(dj.config['locations.metadata_surgery_experiment']+'Surgery.csv')
         IDs = df_surgery['ID'].tolist()
         for ID in IDs:
             df_wr = online_notebook.fetch_water_restriction_metadata(ID)
             if type(df_wr) == pd.DataFrame:
-                df_wr.to_csv(dj.config['locations.metadata_behavior']+ID+'.csv') 
-        with open(dj.config['locations.metadata_behavior']+'last_modify_time.json', "w") as write_file:
+                df_wr.to_csv(dj.config['locations.metadata_surgery_experiment']+ID+'.csv') 
+        with open(dj.config['locations.metadata_surgery_experiment']+'last_modify_time.json', "w") as write_file:
             json.dump(lastmodify, write_file)
         print('surgery and WR metadata updated')
     
@@ -103,7 +103,7 @@ def populatemetadata():
             print('duplicate virus: ',virusnow['virus_name'], ' already exists')
     #%% populate subjects, surgeries and water restrictions
     print('adding surgeries and stuff')
-    df_surgery = pd.read_csv(dj.config['locations.metadata_behavior']+'Surgery.csv')
+    df_surgery = pd.read_csv(dj.config['locations.metadata_surgery_experiment']+'Surgery.csv')
     #%%
     for item in df_surgery.iterrows():
         if item[1]['project'] == dj.config['project'] and (item[1]['status'] == 'training' or item[1]['status'] == 'sacrificed'):
@@ -201,7 +201,7 @@ def populatemetadata():
             if item[1]['ID']:
                 #df_wr = online_notebook.fetch_water_restriction_metadata(item[1]['ID'])
                 try:
-                    df_wr = pd.read_csv(dj.config['locations.metadata_behavior']+item[1]['ID']+'.csv')
+                    df_wr = pd.read_csv(dj.config['locations.metadata_surgery_experiment']+item[1]['ID']+'.csv')
                 except:
                     df_wr = None
                 if type(df_wr) == pd.DataFrame:
