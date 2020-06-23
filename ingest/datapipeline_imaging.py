@@ -25,6 +25,7 @@ import ray
 import time
 
 homefolder = dj.config['locations.mr_share']
+baseline_pixel_intensity_value = 1600 # in case of 4x binning
 #%%
 
 def moving_average(a, n=3) : # moving average 
@@ -167,12 +168,14 @@ def upload_spike_pursuit_matlab_data(key_now,movie_dir_now):
                         f0.append(celldata['F0'][0])
                         spatial_filters.append(celldata['spatialFilter']*-1)
                     framenums.append(len(dff[-1]))
-                    with h5py.File(os.path.join(movie_dir_now, 'datasetblock'+str(blocknum)+'.mat'), 'r') as f:
-                        fl = f['data'][:,ROI_coordinate[0][0]:ROI_coordinate[1][0]+1,ROI_coordinate[0][1]:ROI_coordinate[1][1]+1]
-                    spatial_filter = spatial_filters[-1]/sum(sum(spatial_filters[-1]))
-                    filtered = np.multiply(fl, spatial_filter.T[np.newaxis, :,:])
-                    f = np.mean(filtered,axis = (1,2))
-                    fs.append(f)
+# =============================================================================
+#                     with h5py.File(os.path.join(movie_dir_now, 'datasetblock'+str(blocknum)+'.mat'), 'r') as f:
+#                         fl = f['data'][:,ROI_coordinate[0][0]:ROI_coordinate[1][0]+1,ROI_coordinate[0][1]:ROI_coordinate[1][1]+1]
+#                     spatial_filter = spatial_filters[-1]/sum(sum(spatial_filters[-1]))
+#                     filtered = np.multiply(fl, spatial_filter.T[np.newaxis, :,:])
+#                     f = np.mean(filtered,axis = (1,2))
+#                     fs.append(f)
+# =============================================================================
                     blocknum += 1
                 if len(dff)>0:
                     if len(imaging.RegisteredMovie()&key_now &'motion_correction_method = "Matlab"')==0:
@@ -186,12 +189,25 @@ def upload_spike_pursuit_matlab_data(key_now,movie_dir_now):
                         key_motioncorr['motion_corr_description'] = 'rigid motion correction done with dftregistration'
                         key_motioncorr['motion_corr_vectors'] = np.concatenate(motion_corr_vectors)
                         imaging.MotionCorrection().insert1(key_motioncorr, allow_direct_insert=True)
-                    f0_orig=f0
+                    #f0_orig=f0
                     while not type(spikeidxes[0]) == np.int64:
                         spikeidxes = np.concatenate(spikeidxes)
                         dff = np.concatenate(dff)
                         f0 = np.concatenate(f0)
-                    f = np.concatenate(fs)*np.mean(meanimages[0])
+# =============================================================================
+#                     f = np.concatenate(fs)*np.mean(meanimages[0])
+#                     
+#                     
+#                     
+#                     # correct with baseline pixel intensity of the camera : 100 per pixel:
+#                     f -= baseline_pixel_intensity_value
+# =============================================================================
+                    f_spikepursuit= dff*f0+f0 - baseline_pixel_intensity_value
+                    f0 -= baseline_pixel_intensity_value
+                    dff = (f_spikepursuit-f0)/f0
+                    
+                    
+                    
                     mask = np.zeros([int(movie_y_size),int(movie_x_size)])
                     ROI_coordinate = ROI_coordinates[0]
                     mask[ROI_coordinate[0][1]:ROI_coordinate[1][1]+1,ROI_coordinate[0][0]:ROI_coordinate[1][0]+1] = spatial_filters[0]
@@ -214,15 +230,15 @@ def upload_spike_pursuit_matlab_data(key_now,movie_dir_now):
                         print('original spikepursuit ROI already uploaded?')
                         #%
                     try:   
-                        t = np.arange(len(f))
-                        out = scipy.optimize.curve_fit(lambda t,a,b,c,aa,bb: a*np.exp(-t/b) + c + aa*np.exp(-t/bb),  t,  f,maxfev=20000)#,bounds=(0, [np.inf,np.inf,np.inf])
+                        t = np.arange(len(f_spikepursuit))
+                        out = scipy.optimize.curve_fit(lambda t,a,b,c,aa,bb: a*np.exp(-t/b) + c + aa*np.exp(-t/bb),  t,  f_spikepursuit,maxfev=20000)#,bounds=(0, [np.inf,np.inf,np.inf])
                         a = out[0][0]
                         b = out[0][1]
                         c = out[0][2]
                         aa = out[0][3]
                         bb = out[0][4]                #break
                         f0 = a*np.exp(-t/b) + c + aa*np.exp(-t/bb)
-                        dff = (f-f0)/f0
+                        dff = (f_spikepursuit-f0)/f0
                         key_roi['roi_dff'] = dff
                         key_roi['roi_f0'] = f0
                         key_roi['roi_type'] = 'SpikePursuit_dexpF0'
@@ -942,6 +958,12 @@ def save_volpy_pipeline(roitype = 'VolPy',motion_corr = 'VolPy'):
                                             imaging.MotionCorrection().insert1(key_motioncorr, allow_direct_insert=True)
                                             mcorrid =+ 1
                                         f = dff*f0+f0
+                                        
+                                        # correct with baseline pixel intensity of the camera : 100 per pixel:
+                                        f -= baseline_pixel_intensity_value
+                                        f0 -= baseline_pixel_intensity_value
+                                        dff = (f-f0)/f0
+                                        
                                         #%
                                         mask = np.asarray(spikepursuit['estimates']['bwexp'][cellid],float)
                                         wherex = np.where(spikepursuit['estimates']['bwexp'][cellid])[0]
@@ -985,6 +1007,11 @@ def save_volpy_pipeline(roitype = 'VolPy',motion_corr = 'VolPy'):
                                             aps =  apdict['peak_heights']>cutoff
                                             spikeidxes = idxap[aps]+1
                                             f0 = moving_average(f,int(fr*4))
+                                            
+                                            # correct with baseline pixel intensity of the camera : 100 per pixel:
+                                            f -= baseline_pixel_intensity_value
+                                            f0 -= baseline_pixel_intensity_value
+                                            
                                             dff = (f-f0)/f0
                                             mask = ROI
                                             
