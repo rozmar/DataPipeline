@@ -145,7 +145,7 @@ def extrapolate_sweep_series_resistance():
     #%%
     
 def populateelphys():
-  #%  
+  #%%  
     df_subject_wr_sessions=pd.DataFrame(lab.WaterRestriction() * experiment.Session() * experiment.SessionDetails)
     df_subject_ids = pd.DataFrame(lab.Subject())
     if len(df_subject_wr_sessions)>0:
@@ -159,8 +159,8 @@ def populateelphys():
     basedir = Path(dj.config['locations.elphysdata_acq4'])
     for setup_dir in basedir.iterdir():
         setup_name=setup_dir.name
-        sessions = configfile.readConfigFile(setup_dir.joinpath('.index'))
-        for session_acq in sessions.keys():
+        sessions = np.sort(os.listdir(setup_dir))#configfile.readConfigFile(setup_dir.joinpath('.index'))
+        for session_acq in sessions[::-1]:#.keys():
             if session_acq != '.' and session_acq != 'log.txt':
                 session_dir = setup_dir.joinpath(session_acq)
                 try:
@@ -217,32 +217,22 @@ def populateelphys():
                                     if series != '.' and series != 'log.txt':
                                         series_dir =  cell_dir.joinpath(series)
                                         sweeps = configfile.readConfigFile(series_dir.joinpath('.index'))
-                                        for sweep in sweeps.keys():
+                                        if 'Clamp1.ma' in sweeps.keys():
+                                            protocoltype = 'single sweep'
+                                            sweepkeys = ['']
+                                        else:
+                                            protocoltype = 'multiple sweeps'
+                                            sweepkeys = sweeps.keys()
+                                        for sweep in sweepkeys:
                                             if sweep != '.' and '.txt' not in sweep and '.ma' not in sweep:
                                                 sweep_dir = series_dir.joinpath(sweep)    
                                                 sweepinfo = configfile.readConfigFile(sweep_dir.joinpath('.index'))
+                                                if sweep=='':
+                                                    sweep='0'
                                                 for file in sweepinfo.keys():
                                                     if '.ma' in file:
                                                         try: # old file version
-                                                            ephysfile = MetaArray()
-                                                            ephysfile.readFile(sweep_dir.joinpath(file))
-                                                            data = ephysfile.asarray()
-                                                            metadata = ephysfile.infoCopy()
-                                                            sweepstarttime = datetime.datetime.fromtimestamp(metadata[2]['startTime'])
-                                                            relativetime = (sweepstarttime-cellstarttime).total_seconds()
-                                                            ephisdata = dict()
-                                                            ephisdata['V']=data[1]
-                                                            ephisdata['stim']=data[0]
-                                                            ephisdata['data']=data
-                                                            ephisdata['metadata']=metadata
-                                                            ephisdata['time']=metadata[1]['values']
-                                                            ephisdata['relativetime']= relativetime
-                                                            ephisdata['sweepstarttime']= sweepstarttime
-                                                            ephisdata['series']= series
-                                                            ephisdata['sweep']= sweep
-                                                            sweepstarttimes.append(sweepstarttime)
-                                                            ephisdata_cell.append(ephisdata)
-                                                        except: # new file version
+                                                             
                                                             #print('new file version')
                                                             #%
                                                             ephysfile = h5.File(sweep_dir.joinpath(file), "r")
@@ -273,18 +263,47 @@ def populateelphys():
                                                                     channelname = channel['name'].decode()
                                                                     if channelname[0] == 'u':
                                                                         channelname = channelname[2:-1]
-                                                                        if channelname in ['OrcaFlashExposure','Temperature']:
+                                                                        if channelname in ['OrcaFlashExposure','Temperature','LED525','FrameCommand','NextFileTrigger']:
                                                                             ephisdata[channelname] = data[idx]
+                                                                            #print('{} added'.format(channelname))
                                                                         else:
                                                                             print('waiting in the other daq')
                                                                             timer.sleep(1000)
                                                             ephisdata_cell.append(ephisdata)
-                                                            #%
+                                                                #%
+                                                            
+                                                        except: # new file version
+                                                            print('old version')
+                                                            ephysfile = MetaArray()
+                                                            ephysfile.readFile(sweep_dir.joinpath(file))
+                                                            data = ephysfile.asarray()
+                                                            metadata = ephysfile.infoCopy()
+                                                            sweepstarttime = datetime.datetime.fromtimestamp(metadata[2]['startTime'])
+                                                            relativetime = (sweepstarttime-cellstarttime).total_seconds()
+                                                            ephisdata = dict()
+                                                            ephisdata['V']=data[1]
+                                                            ephisdata['stim']=data[0]
+                                                            ephisdata['data']=data
+                                                            ephisdata['metadata']=metadata
+                                                            ephisdata['time']=metadata[1]['values']
+                                                            ephisdata['relativetime']= relativetime
+                                                            ephisdata['sweepstarttime']= sweepstarttime
+                                                            ephisdata['series']= series
+                                                            ephisdata['sweep']= sweep
+                                                            sweepstarttimes.append(sweepstarttime)
+                                                            ephisdata_cell.append(ephisdata)
+                                                           
     # ============================================================================
     #                             if wrname == 'FOR04':
     # =============================================================================
-                                # add session to DJ if not present
+                                # add session to DJ if not present                                   
                                 if len(ephisdata_cell)> 0 :
+                               
+# =============================================================================
+#                                     print('waiting')
+#                                     timer.sleep(1000)
+# =============================================================================
+                                    #%
                                     if len(experiment.Session() & 'subject_id = "'+str(sessiondata['subject_id'])+'"' & 'session_date = "'+str(sessiondata['session_date'])+'"') == 0:
                                         if len(experiment.Session() & 'subject_id = "'+str(sessiondata['subject_id'])+'"') == 0:
                                             sessiondata['session'] = 1
@@ -301,8 +320,12 @@ def populateelphys():
                                             'session': session,
                                             'cell_number': cell_number,
                                             }
-                                    if len(ephys_patch.Cell() & celldata) == 0:
-                                        print('adding new recording:' )
+                                    #%
+                                    if len(ephys_patch.Cell() & celldata) == 0 or len(ephys_patch.Cell()*ephys_patch.Sweep() & celldata)<len(ephisdata_cell):
+                                        if len(ephys_patch.Cell()*ephys_patch.Sweep() & celldata)<len(ephisdata_cell):
+                                            print('finishing a recording:' )
+                                        else:    
+                                            print('adding new recording:' )
                                         print(celldata)
                                         if 'type'in serieses['.'].keys():
                                             if serieses['.']['type'] == 'interneuron':
@@ -319,7 +342,10 @@ def populateelphys():
                                             celldata['depth'] = int(serieses['.']['depth'])
                                         else:
                                             celldata['depth']= -1
-                                        ephys_patch.Cell().insert1(celldata, allow_direct_insert=True)
+                                        try:
+                                            ephys_patch.Cell().insert1(celldata, allow_direct_insert=True)
+                                        except dj.errors.DuplicateError:
+                                            pass #already uploaded
                                         if 'notes' in serieses['.'].keys():
                                             cellnotes = serieses['.']['notes']
                                         else:
@@ -329,14 +355,18 @@ def populateelphys():
                                                 'session': session,
                                                 'cell_number': cell_number,
                                                 'notes': cellnotes
-                                                }                            
-                                        ephys_patch.CellNotes().insert1(cellnotesdata, allow_direct_insert=True)
+                                                }   
+                                        try:
+                                            ephys_patch.CellNotes().insert1(cellnotesdata, allow_direct_insert=True)
+                                        except dj.errors.DuplicateError:
+                                            pass #already uploaded
             
                                         #%
                                         for i, ephisdata in enumerate(ephisdata_cell):
                                             
                                                 #%
                                             sweep_number = i
+                                            print('sweep {}'.format(sweep_number))
                                             sweep_data = {
                                                     'subject_id': subject_id,
                                                     'session': session,
@@ -370,7 +400,7 @@ def populateelphys():
                                                     channelunits.append(line_now['units'])
                                             commandidx = np.where(np.array(channelnames) == 'command')[0][0]
                                             dataidx = np.where(np.array(channelnames) == 'primary')[0][0]
-                                            #%%
+                                            #%
                                             clampparams_data = ephisdata['metadata'][2]['ClampState']['ClampParams'].copy()
                                             clampparams_data_new = dict()
                                             for clampparamkey in clampparams_data.keys():#6004 is true for some reason.. changing it back to 1
@@ -382,7 +412,7 @@ def populateelphys():
                                                 else:
                                                     clampparams_data[clampparamkey] = float(clampparams_data[clampparamkey])
                                                 clampparams_data_new[clampparamkey.lower()] = clampparams_data[clampparamkey]
-                                                #%%
+                                                #%
                                             sweepmetadata_data = {
                                                     'subject_id': subject_id,
                                                     'session': session,
@@ -413,16 +443,24 @@ def populateelphys():
                                             #timer.sleep(10000)
                                             try:
                                                 ephys_patch.Sweep().insert1(sweep_data, allow_direct_insert=True)
-                                            except:
-                                                print(sweep_data)#just to catch and error TODO remove this
-                                                ephys_patch.Sweep().insert1(sweep_data, allow_direct_insert=True)
+                                            except dj.errors.DuplicateError:
+                                                pass #already uploaded
                                             try: # maybe it's a duplicate..
                                                 ephys_patch.ClampParams().insert1(clampparams_data_new, allow_direct_insert=True)
-                                            except:
-                                                pass
-                                            ephys_patch.SweepMetadata().insert1(sweepmetadata_data, allow_direct_insert=True)
-                                            ephys_patch.SweepResponse().insert1(sweepdata_data, allow_direct_insert=True)
-                                            ephys_patch.SweepStimulus().insert1(sweepstimulus_data, allow_direct_insert=True)
+                                            except dj.errors.DuplicateError:
+                                                pass #already uploaded
+                                            try:
+                                                ephys_patch.SweepMetadata().insert1(sweepmetadata_data, allow_direct_insert=True)
+                                            except dj.errors.DuplicateError:
+                                                pass #already uploaded
+                                            try:
+                                                ephys_patch.SweepResponse().insert1(sweepdata_data, allow_direct_insert=True)
+                                            except dj.errors.DuplicateError:
+                                                pass #already uploaded
+                                            try:
+                                                ephys_patch.SweepStimulus().insert1(sweepstimulus_data, allow_direct_insert=True)
+                                            except dj.errors.DuplicateError:
+                                                pass #already uploaded
                                             #%
                                             if 'OrcaFlashExposure' in ephisdata.keys():
                                                 sweepimagingexposuredata = {
@@ -432,16 +470,42 @@ def populateelphys():
                                                     'sweep_number': sweep_number,
                                                     'imaging_exposure_trace' :  ephisdata['OrcaFlashExposure']
                                                     }
-                                                ephys_patch.SweepImagingExposure().insert1(sweepimagingexposuredata, allow_direct_insert=True)
+                                                try:
+                                                    ephys_patch.SweepImagingExposure().insert1(sweepimagingexposuredata, allow_direct_insert=True)
+                                                except dj.errors.DuplicateError:
+                                                    pass #already uploaded
                                             if 'Temperature' in ephisdata.keys():
                                                 sweeptemperaturedata = {
                                                     'subject_id': subject_id,
                                                     'session': session,
                                                     'cell_number': cell_number,
                                                     'sweep_number': sweep_number,
-                                                    'temperature_trace' : ephisdata['Temperature'],
-                                                    'temperature_units' :  'dunno'
+                                                    'temperature_trace' : ephisdata['Temperature']*10,
+                                                    'temperature_units' :  'degC'
                                                     }
-                                                ephys_patch.SweepTemperature().insert1(sweeptemperaturedata, allow_direct_insert=True)
+                                                try:
+                                                    ephys_patch.SweepTemperature().insert1(sweeptemperaturedata, allow_direct_insert=True)
+                                                except dj.errors.DuplicateError:
+                                                    pass #already uploaded
+                                            if 'LED525' in ephisdata.keys():
+                                                sweepLEDdata = {
+                                                    'subject_id': subject_id,
+                                                    'session': session,
+                                                    'cell_number': cell_number,
+                                                    'sweep_number': sweep_number,
+                                                    'imaging_led_trace' : ephisdata['LED525']}
+                                                try:
+                                                    ephys_patch.SweepLED().insert1(sweepLEDdata, allow_direct_insert=True)
+                                                except dj.errors.DuplicateError:
+                                                    pass #already uploaded
 
+# =============================================================================
+# 
+# #%%
+# for subject_id in np.unique((lab.Surgery.VirusInjection()&'virus_id = 240').fetch('subject_id')):
+#     dj.config['safemode'] = False
+#     #(experiment.Session()&'subject_id = {}'.format(subject_id)).delete()
+#     (ephysanal.SquarePulse()&'subject_id = {}'.format(subject_id)).delete()
+#     dj.config['safemode'] = True  
+# =============================================================================
 
