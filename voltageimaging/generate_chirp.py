@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
 
-sr = 1*10**5
+sr = 2*10**5
 baseline_s = 1
 end_s = 1
 chirpLen_s = 28
