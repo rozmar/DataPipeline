@@ -557,25 +557,27 @@ def upload_movie_metadata():
     dirs = os.listdir(basedir )
     sessiondates = experiment.Session().fetch('session_date')
     for session_now in dirs:
-        if session_now.isnumeric():
-            session_date = datetime.datetime.strptime(session_now,'%Y%m%d').date()
+        if session_now.isnumeric() or ('anm' in session_now and session_now[:8].isnumeric()):
+            session_date = datetime.datetime.strptime(session_now[:8],'%Y%m%d').date()
             if session_date in sessiondates:
+                print(session_date)
                 subject_id = (experiment.Session() & 'session_date = "'+str(session_date)+'"').fetch('subject_id')[0]
                 session = (experiment.Session() & 'session_date = "'+str(session_date)+'"').fetch('session')[0]            
                 key = {'subject_id':subject_id,'session':session}
                 session_dir_now = os.path.join(basedir, session_now)
-                moviedirs = os.listdir(session_dir_now)
-                #%
                 movienums=list()
-                for moviedir in moviedirs:
-                    m = re.search(r'\d+$', moviedir)
-                    if m is not None:
-                        movienums.append(int(moviedir[m.span()[0]:]))
-                    else:
-                        movienums.append(-1)
-                    #%
+                moviedirs = list()
+                for movieroot, moviedirs_, moviefiles in os.walk(session_dir_now):
+                    if len(moviefiles)>0:
+                        moviedir = movieroot[len(session_dir_now)+1:]
+                        moviedirs.append(moviedir)
+                        m = re.search(r'\d+$', moviedir)
+                        if m is not None:
+                            movienums.append(int(moviedir[m.span()[0]:]))
+                        else:
+                            movienums.append(-1)
                 moviedirs = np.asarray(moviedirs)[np.argsort(movienums)]    
-                        
+    
                 for moviedir in moviedirs:
                     movie_dir_now = os.path.join(session_dir_now,moviedir)
                     if os.path.isdir(movie_dir_now):
@@ -585,7 +587,7 @@ def upload_movie_metadata():
                                                    tempdir = tempdir,
                                                    repository = repository,
                                                    repodir = repodir)
-                        
+
   #%%                      
 def upload_movie_metadata_core(session_dir_now,key,copy_tiff_locally_first,tempdir,repository,repodir):
     #%%
@@ -620,8 +622,7 @@ def upload_movie_metadata_core(session_dir_now,key,copy_tiff_locally_first,tempd
                 if '_tube' in basename.lower():
                     camera_tube_magn= float(basename[sepidxes[np.argmax(sepidxes>basename.lower().find('_tube'))-2]+1:basename.lower().find('_tube')-1])
                 else:
-                    camera_tube_magn= float(basename[sepidxes[np.argmax(sepidxes>basename.lower().find('tube'))-1]+1:basename.lower().find('tube')-1])
-                        
+                    camera_tube_magn= float(basename[sepidxes[np.argmax(sepidxes>basename.lower().find('tube'))-1]+1:basename.lower().find('tube')-1]) 
             else: 
                 camera_tube_magn = 1. # default value
             
@@ -640,34 +641,45 @@ def upload_movie_metadata_core(session_dir_now,key,copy_tiff_locally_first,tempd
                 else:
                     tifffile = os.path.join(session_dir_now,file_now)
                 with Image.open(tifffile) as im:#with Image.open(os.path.join(session_dir_now,file_now)) as im:
+                    #%
                     frame_count.append(im.n_frames)
                     width = im.tag[256][0]
                     height = im.tag[257][0]
                     tagstring = im.tag[270][0]
+                    string_now = tagstring[tagstring.find('Binning =')+len('Binning = '):]
+                    string_now = string_now[:string_now.find('\r\n')]
+                    binning = int(string_now)
                     datetimematch = re.search(r'\d{4} \d{2}:\d{2}:\d{2}', tagstring)
                     movie_time = datetime.datetime.strptime(tagstring[tagstring.find('\r\n')+2:datetimematch.end()], '%a, %d %b %Y %H:%M:%S')
                     string_now = tagstring[tagstring.find('Time_From_Start =')+len('Time_From_Start = '):]
                     string_now = string_now[:string_now.find('\r\n')]
                     a = datetime.datetime.strptime(string_now, '%H:%M:%S.%f').time()#
-                    string_now = tagstring[tagstring.find('Exposure1 = ')+len('Exposure1 = '):]
-                    string_now = string_now[:string_now.find('s')]
-                    freq = 1/float(string_now)
+                    if 'Exposure1' in tagstring:
+                        string_now = tagstring[tagstring.find('Exposure1 = ')+len('Exposure1 = '):]
+                        string_now = string_now[:string_now.find('s')]
+                        freq = 1/float(string_now)
+                        synchronous_readout_mode = False
+                    else: # calculate theoretical maximum frame rate
+                        H= 9.74436*10**-6
+                        freq = 1/(height*binning/2*H+5*H)
+                        synchronous_readout_mode = True
                     freqs.append(freq)
                     time_to_first_frame = datetime.timedelta(hours = a.hour,minutes = a.minute,seconds = a.second, microseconds = a.microsecond)
                     total_seconds = time_to_first_frame.total_seconds()
                     first_frame_time = movie_time + time_to_first_frame
                     first_frame_times.append(first_frame_time)
-                    string_now = tagstring[tagstring.find('Binning =')+len('Binning = '):]
-                    string_now = string_now[:string_now.find('\r\n')]
-                    binning = int(string_now)
+                    
                     #print(total_seconds)
                     print(file_now)
                     #print(movie_time)
                     #print(first_frame_time)
                     #print(freq)
+                    #%
             
             try:
                 movie_length = (first_frame_times[-1] - movie_time).total_seconds() + frame_count[-1]/freqs[-1]
+                if np.isnan(movie_length):
+                    movie_length = 30 # HOTFIX for synchronous readout movies, I assume 30s long movies
             except:
                 movie_length = 0
             
@@ -687,19 +699,26 @@ def upload_movie_metadata_core(session_dir_now,key,copy_tiff_locally_first,tempd
             
             sweep_nums, sweep_start_times, frametimes, frame_sweeptimes = (ephys_patch.Sweep()*ephysanal.SweepFrameTimes() & key_cell).fetch('sweep_number','sweep_start_time','frame_time','frame_sweep_time')
             if len(sweep_nums)>0:
+                
                 #%
                 frametimes_all = np.concatenate(frametimes)
                 frame_sweeptimes_all = np.concatenate(frame_sweeptimes)
                 frametimes_diff_start = np.concatenate([[np.inf],np.diff(frametimes_all)])
                 frametimes_diff_end = np.concatenate([np.diff(frametimes_all),[np.inf]])
                 #%
-                if len(frametimes_all[(frametimes_diff_start>1) & (frame_sweeptimes_all>1)])>0:
+                if len(frametimes_all[(frametimes_diff_start>1) & (frame_sweeptimes_all>1)])>0 or (synchronous_readout_mode and len(frametimes_all[(frametimes_diff_start>1)])>0 ):
                     #%
                     try:#%
                         #%
-                        time_offset_idx = np.argmin(np.abs(frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff))
-                        residual_time_offset = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1)& (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff)[time_offset_idx]
-                        movie_start_time = cell_datetime + datetime.timedelta(seconds = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)])[time_offset_idx])
+                        
+                        if synchronous_readout_mode:
+                            time_offset_idx = np.argmin(np.abs(frametimes_all[(frametimes_diff_start>.5)] - movie_start_timediff))
+                            residual_time_offset = (frametimes_all[(frametimes_diff_start>.5)] - movie_start_timediff)[time_offset_idx]
+                            movie_start_time = cell_datetime + datetime.timedelta(seconds = (frametimes_all[(frametimes_diff_start>.5)])[time_offset_idx])
+                        else:
+                            time_offset_idx = np.argmin(np.abs(frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff))
+                            residual_time_offset = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1)& (np.round(frametimes_diff_end/(1/freqs[0])) == 1)] - movie_start_timediff)[time_offset_idx]
+                            movie_start_time = cell_datetime + datetime.timedelta(seconds = (frametimes_all[(frametimes_diff_start>.5) & (frame_sweeptimes_all>1) & (np.round(frametimes_diff_end/(1/freqs[0])) == 1)])[time_offset_idx])
                         #%
                     except:
                         time_offset_idx=0
@@ -723,7 +742,7 @@ def upload_movie_metadata_core(session_dir_now,key,copy_tiff_locally_first,tempd
                         moviedata['movie_name'] = basename
                         moviedata['movie_x_size'] = width
                         moviedata['movie_y_size'] = height                                
-                        moviedata['movie_frame_rate'] = np.mean(freqs)
+                        moviedata['movie_frame_rate'] = np.nanmean(freqs)
                         moviedata['movie_frame_num'] = sum(frame_count)
                         moviedata['movie_start_time'] = movie_start_time_from_session_start.total_seconds()
                         moviedata['movie_pixel_size'] = pixel_size
@@ -786,7 +805,7 @@ def calculate_exposition_times():
     # =============================================================================
             exptimes_all  = exptimes_all[startindex:]
             exptimes_diff = np.diff(exptimes_all) 
-            gapidxes = np.concatenate([np.where((exptimes_diff>2/movieframerate))[0],[-1]])#&(exptimes_diff<3)
+            gapidxes = np.concatenate([np.where((exptimes_diff>5/movieframerate))[0],[-1]])#&(exptimes_diff<3)
             
             #%
             frame_times = list()
@@ -801,7 +820,7 @@ def calculate_exposition_times():
                 else:
                     startidx = gapidxes[gapidx_now-1]+1
                 endidx = gapidxes[gapidx_now]
-                if startidx<endidx:
+                if startidx<endidx or endidx==-1:
 # =============================================================================
 #                     if len(frame_times)>0: # this part removes a frame time if the imaging framerate would jump too high.. probably not needed...
 #                         if (exptimes_all[startidx]-frame_times[-1])/np.diff(exptimes_all[startidx:startidx+2])[0]<.5:
