@@ -26,10 +26,12 @@ class ActionPotential(dj.Computed):
         #key = {'subject_id': 454263, 'session': 1, 'cell_number': 1, 'sweep_number': 62}
         #print(key)
         keynow = key.copy()
+        counter = 0
         if len(ActionPotential()&keynow) == 0:
             #%%
             pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(SweepResponseCorrected()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
             if len(pd_sweep)>0:
+                
                 trace = pd_sweep['response_trace_corrected'].values[0]
                 sr = pd_sweep['sample_rate'][0]
                 si = 1/sr
@@ -45,6 +47,14 @@ class ActionPotential(dj.Computed):
                 peaks = ndimage.morphology.binary_dilation(peaks,np.ones(int(round(.002/si))))
                 spikemaxidxes = list()
                 while np.any(peaks):
+                    if counter ==0:
+                        print('starting ap detection')
+                    if counter%2==0:
+                        dj.conn().ping()
+                    if counter%20==0:
+                        print('pingx10')
+                    
+                    counter +=1
                     spikestart = np.argmax(peaks)
                     spikeend = np.argmin(peaks[spikestart:])+spikestart
                     if spikestart == spikeend:
@@ -87,6 +97,7 @@ class ActionPotentialDetails(dj.Computed):
     ap_dv_min_voltage : float # mV    
     """
     def make(self, key):
+        counter = 0
         #%%
         sigma = .00003 # seconds for filering
         step_time = .0001 # seconds
@@ -117,6 +128,9 @@ class ActionPotentialDetails(dj.Computed):
             #%%
             keylist = list()
             for ap_now in pd_ap.iterrows():
+                counter += 1
+                if counter%2==0:
+                    dj.conn().ping()
                 ap_now = dict(ap_now[1])
                 ap_max_index = ap_now['ap_max_index']
                 dvmax_index = ap_max_index
@@ -205,32 +219,32 @@ class SquarePulse(dj.Computed):
     square_pulse_amplitude: float #amplitude of square pulse
     """
     def make(self, key):
-        
-        pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
-        if len(pd_sweep)>0:
-            #%%
-            stim = pd_sweep['stimulus_trace'].values[0]
-            sr = pd_sweep['sample_rate'].values[0]
-            sweepstart = pd_sweep['sweep_start_time'].values[0]
-            dstim = np.diff(stim)
-            square_pulse_num = -1
-            while sum(dstim!=0)>0:
-                square_pulse_num += 1
-                stimstart = np.argmax(dstim!=0)
-                amplitude = dstim[stimstart]
-                dstim[stimstart] = 0
-                stimend = np.argmax(dstim!=0)
-                dstim[stimend] = 0
-                stimstart += 1
-                stimend += 1
-                key['square_pulse_num'] = square_pulse_num
-                key['square_pulse_start_idx'] = stimstart
-                key['square_pulse_end_idx'] = stimend
-                key['square_pulse_start_time'] = stimstart/sr + float(sweepstart)
-                key['square_pulse_length'] = (stimend-stimstart)/sr
-                key['square_pulse_amplitude'] = amplitude
-                #%%
-                self.insert1(key,skip_duplicates=True)
+        protocol_name = (ephys_patch.Sweep&key).fetch1('protocol_name')
+        if 'chirp' not in protocol_name.lower():
+            pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
+            if len(pd_sweep)>0:
+    
+                stim = pd_sweep['stimulus_trace'].values[0]
+                sr = pd_sweep['sample_rate'].values[0]
+                sweepstart = pd_sweep['sweep_start_time'].values[0]
+                dstim = np.diff(stim)
+                square_pulse_num = -1
+                while sum(dstim!=0)>0:
+                    square_pulse_num += 1
+                    stimstart = np.argmax(dstim!=0)
+                    amplitude = dstim[stimstart]
+                    dstim[stimstart] = 0
+                    stimend = np.argmax(dstim!=0)
+                    dstim[stimend] = 0
+                    stimstart += 1
+                    stimend += 1
+                    key['square_pulse_num'] = square_pulse_num
+                    key['square_pulse_start_idx'] = stimstart
+                    key['square_pulse_end_idx'] = stimend
+                    key['square_pulse_start_time'] = stimstart/sr + float(sweepstart)
+                    key['square_pulse_length'] = (stimend-stimstart)/sr
+                    key['square_pulse_amplitude'] = amplitude
+                    self.insert1(key,skip_duplicates=True)
             
 @schema
 class SquarePulseSeriesResistance(dj.Computed):
