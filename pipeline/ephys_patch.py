@@ -144,3 +144,11 @@ class SweepImagingExposure(dj.Imported): #TO DO: fill in metadata
     ---
     imaging_exposure_trace  : longblob #
     """
+
+@schema
+class SweepLED(dj.Imported): #TO DO: fill in metadata
+    definition = """
+    -> Sweep
+    ---
+    imaging_led_trace  : longblob #
+    """
