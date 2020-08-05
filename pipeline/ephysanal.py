@@ -31,7 +31,7 @@ class ActionPotential(dj.Computed):
             #%%
             pd_sweep = pd.DataFrame((ephys_patch.Sweep()&key)*(SweepResponseCorrected()&key)*(ephys_patch.SweepStimulus()&key)*(ephys_patch.SweepMetadata()&key))
             if len(pd_sweep)>0:
-                
+                dj.conn().ping()
                 trace = pd_sweep['response_trace_corrected'].values[0]
                 sr = pd_sweep['sample_rate'][0]
                 si = 1/sr
@@ -78,8 +78,12 @@ class ActionPotential(dj.Computed):
                         keynow['ap_max_index'] = spikemaxidx
                         keynow['ap_max_time'] = spikemaxtime
                         keylist.append(keynow)
-                        #%%
-                    self.insert(keylist,skip_duplicates=True)
+                        #%
+                    try:
+                        self.insert(keylist,skip_duplicates=True)
+                    except:
+                        print(key)
+                        self.insert(keylist,skip_duplicates=True)
 @schema
 class ActionPotentialDetails(dj.Computed):
     definition = """
