@@ -13,13 +13,382 @@ import matplotlib.colors as colors
 import pandas as pd
 import time
 from plot.plot_imaging import *
+import scipy.ndimage as ndimage
 font = {'size'   : 16}
 
 matplotlib.rc('font', **font)
 from pathlib import Path
 
 homefolder = dj.config['locations.mr_share']
+
+#%% depth histogram
+depth = (ephys_patch.Cell()*imaging_gt.CellMovieCorrespondance()).fetch('depth')
+fig = plt.figure(figsize = [5,5])
+ax_hist = fig.add_subplot(111)
+ax_hist.hist(depth,np.arange(10,100,10))
+ax_hist.set_xlabel('depth (microns)')
+ax_hist.set_ylabel('movie count')
+
+#%% save average images for Carsen
+from PIL import Image
+subject_ids,sessions,movie_nums, meanimages = (imaging.RegisteredMovie()&'motion_correction_method = "VolPy"').fetch('subject_id','session','movie_number','registered_movie_mean_image')
+for subject_id,session,movie_num, meanimage in zip(subject_ids,sessions,movie_nums, meanimages):
+    im = Image.fromarray(meanimage)
+    im.save("/home/rozmar/Data/Voltage_imaging/mean_images/anm{}_session{}_movie{}.tiff".format(subject_id,session,movie_num))
+    break
+
+
 #%% homefolder = str(Path.home())
+AP_tlimits = [-.005,.01]
+subject_ids = np.unique(imaging_gt.CellMovieCorrespondance().fetch('subject_id'))
+for subject_id in subject_ids:
+    key ={'subject_id':subject_id}
+    cell_numbers =np.unique((imaging_gt.CellMovieCorrespondance()&key).fetch('cell_number'))
+    for cell_number in cell_numbers:
+        
+        key['cell_number']=cell_number
+        #%
+        key ={'subject_id':456462, 'cell_number':6}
+        #key ={'subject_id':466774, 'cell_number':0}
+        key['roi_type'] = "VolPy"
+        thresh_all,apmaxtimes_all,baseline_all =(imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails()*ephysanal.ActionPotential&key&'ap_real = 1').fetch('ap_threshold','ap_max_time','ap_baseline_value')
+        fig = plt.figure(figsize = [15,15])
+        ax_hist = fig.add_subplot(311)
+        ax_o_ap = fig.add_subplot(313)
+        ax_hist.hist(thresh_all,100)
+        ax_hist.set_title(key)
+        apwavetimes,apwaves,famerates,snratio,apnums,ap_threshold = ((imaging_gt.GroundTruthROI()*imaging.Movie()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails())&key&'ap_real = 1').fetch('apwave_time','apwave_dff','movie_frame_rate','apwave_snratio','ap_num','ap_threshold')
+        thresh_ophys = list()
+        for apwavetime, apwave in zip(apwavetimes,apwaves):
+            neededidx = (apwavetime < -.005) & (apwavetime > -.015)
+            thresh_ophys.append(np.mean(apwave[neededidx]))
+            ax_o_ap.plot(apwavetime,apwave-np.mean(apwave[neededidx]))
+            #ax_o_ap.plot(apwavetime[neededidx],apwave[neededidx],'ro')
+        ax_thresh = fig.add_subplot(312)
+        ax_thresh.plot(ap_threshold,thresh_ophys,'ko')
+        break
+    break
+#%%  check ephys-ophys correspondance
+def moving_average(a, n=3) : # moving average 
+    if n>2:
+        begn = int(np.ceil(n/2))
+        endn = int(n-begn)-1
+        a = np.concatenate([a[begn::-1],a,a[:-endn:-1]])
+    ret = np.cumsum(a,axis = 0, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
+import scipy
+
+
+
+tau_1_on_voltron = .64/1000
+tau_2_on_voltron = 4.1/1000
+tau_1_ratio_on_voltron =  .61
+tau_1_off_voltron = .78/1000
+tau_2_off_voltron = 3.9/1000
+tau_1_ratio_off_voltron = 55
+    
+    
+downsampled_rate = 10000 #Hz
+junction_potential = 13.5
+
+
+key ={'subject_id':456462}
+key['movie_number'] = 3 #3
+
+
+key ={'subject_id':462149}
+key['movie_number'] = 0 #3
+
+key = (imaging_gt.CellMovieCorrespondance()&key).fetch(as_dict = True)[0]
+key['roi_type'] = "VolPy"
+sweep_numbers = key['sweep_numbers']
+del key['sweep_numbers']
+
+#%
+motion_corr_vectors = np.asarray((imaging.MotionCorrection()*imaging.RegisteredMovie()&key&'motion_correction_method  = "VolPy"'&'motion_corr_description= "rigid motion correction done with VolPy"').fetch1('motion_corr_vectors'))
+#% ophys related stuff
+session_time, cell_recording_start = (experiment.Session()*ephys_patch.Cell()&key).fetch1('session_time','cell_recording_start')
+first_movie_start_time =  np.min(np.asarray(((imaging.Movie()*imaging_gt.GroundTruthROI())&key).fetch('movie_start_time'),float))
+first_movie_start_time_real = first_movie_start_time + session_time.total_seconds()
+frame_times = (imaging.MovieFrameTimes()&key).fetch1('frame_times') - cell_recording_start.total_seconds() + session_time.total_seconds()
+roi_dff,roi_f0,roi_spike_indices,framerate = (imaging.Movie()*imaging.ROI*imaging_gt.GroundTruthROI()&key).fetch1('roi_dff','roi_f0','roi_spike_indices','movie_frame_rate')
+roi_spike_indices = roi_spike_indices-1
+roi_f = (roi_dff*roi_f0)+roi_f0
+
+xvals = frame_times-frame_times[0]
+yvals = roi_f
+out = scipy.optimize.curve_fit(lambda t,a,b,c,d,e: a*np.exp(-t/b) + c + d*np.exp(-t/e),  xvals,  yvals,bounds=((0,0,-np.inf,0,0),(np.inf,np.inf,np.inf,np.inf,np.inf)))
+f0_fit_f = out[0][0]*np.exp(-xvals/out[0][1])+out[0][2] +out[0][3]*np.exp(-xvals/out[0][4])
+dff_fit = (roi_f-f0_fit_f)/f0_fit_f
+
+
+
+#%
+# calculating F0s
+aptimes = (ephysanal.ActionPotential()*imaging_gt.ROIAPWave()*imaging_gt.GroundTruthROI()&key).fetch('ap_max_time')
+aptimes = np.array(aptimes ,float)
+real_spike_indices = list()
+for aptime in aptimes:
+    real_spike_indices.append(np.argmax(frame_times>aptime))
+real_spike_indices = np.asarray(real_spike_indices)
+
+xvals = frame_times[real_spike_indices]-frame_times[real_spike_indices][0]
+yvals = roi_f[real_spike_indices]
+out = scipy.optimize.curve_fit(lambda t,a,b,c,d,e: a*np.exp(-t/b)*0 + c + d*np.exp(-t/e),  xvals,  yvals,bounds=((0,0,-np.inf,0,0),(np.inf,np.inf,np.inf,np.inf,np.inf)))
+xvals = frame_times-frame_times[real_spike_indices][0]
+f0_fit_ap_peak = out[0][0]*np.exp(-xvals/out[0][1])+out[0][2] +out[0][3]*np.exp(-xvals/out[0][4])
+dff_fit_ap_peak = (roi_f-f0_fit_ap_peak)/f0_fit_ap_peak
+
+xvals = frame_times[real_spike_indices-1]-frame_times[real_spike_indices-1][0]
+yvals = roi_f[real_spike_indices-1]
+out = scipy.optimize.curve_fit(lambda t,a,b,c,d,e: a*np.exp(-t/b)*0 + c + d*np.exp(-t/e),  xvals,  yvals,bounds=((0,0,-np.inf,0,0),(np.inf,np.inf,np.inf,np.inf,np.inf)))
+xvals = frame_times-frame_times[real_spike_indices-1][0]
+f0_fit_ap_thresh = out[0][0]*np.exp(-xvals/out[0][1])+out[0][2] +out[0][3]*np.exp(-xvals/out[0][4])
+dff_fit_ap_thresh = (roi_f-f0_fit_ap_thresh)/f0_fit_ap_thresh
+
+
+
+
+# extracting ephys
+traces=list()
+traces_t=list()
+traces_conv = list()
+for sweep_number in sweep_numbers:
+    #%
+    key_sweep = key.copy()
+    key_sweep['sweep_number'] = sweep_number
+
+    neutralizationenable,e_sr= (ephys_patch.SweepMetadata()&key_sweep).fetch1('neutralizationenable','sample_rate')
+    try:
+        uncompensatedRS =  float((ephysanal.SweepSeriesResistance()&key_sweep).fetch1('series_resistance_residual'))
+    except:
+        uncompensatedRS = 0
+    v = (ephys_patch.SweepResponse()&key_sweep).fetch1('response_trace')
+    i = (ephys_patch.SweepStimulus()&key_sweep).fetch1('stimulus_trace')
+    tau_1_on =.1/1000
+    t = np.arange(0,.001,1/e_sr)
+    f_on = np.exp(t/tau_1_on) 
+    f_on = f_on/np.max(f_on)
+    kernel = np.concatenate([f_on,np.zeros(len(t))])[::-1]
+    kernel  = kernel /sum(kernel )  
+    i_conv = np.convolve(i,kernel,'same')
+    v_comp = (v - i*uncompensatedRS*10**6)*1000 - junction_potential
+    i = i * 10**12
+    
+    sweep_start_time  = float((ephys_patch.Sweep()&key_sweep).fetch('sweep_start_time')) 
+    trace_t = np.arange(len(v))/e_sr + sweep_start_time
+    downsample_factor = int(np.round(e_sr/downsampled_rate))
+    #%downsampling
+    v_out = moving_average(v_comp, n=downsample_factor)
+    v_out = v_out[int(downsample_factor/2)::downsample_factor]
+    i_out = moving_average(i, n=downsample_factor)
+    i_out = i_out[int(downsample_factor/2)::downsample_factor]
+    t_out = moving_average(trace_t, n=downsample_factor)
+    t_out = t_out[int(downsample_factor/2)::downsample_factor]
+    
+    #convolving
+    t = np.arange(0,.01,1/downsampled_rate)
+    f_on = tau_1_ratio_on_voltron*np.exp(t/tau_1_on_voltron) + (1-tau_1_ratio_on_voltron)*np.exp(-t/tau_2_on_voltron)
+    f_off = tau_1_ratio_off_voltron*np.exp(t[::-1]/tau_1_off_voltron) + (1-tau_1_ratio_off_voltron)*np.exp(-t[::-1]/tau_2_off_voltron)
+    f_on = f_on/np.max(f_on)
+    f_off = f_off/np.max(f_off)
+    kernel = np.concatenate([f_on,np.zeros(len(f_off))])[::-1]
+    kernel  = kernel /sum(kernel )
+    
+    trace_conv0 = np.convolve(np.concatenate([v_out[500::-1],v_out,v_out[:-500:-1]]),kernel,mode = 'same') 
+    trace_conv0 = trace_conv0[500:500+len(v_out)]
+    
+    kernel = np.ones(int(np.round(downsampled_rate/framerate)))
+    kernel  = kernel /sum(kernel )
+    trace_conv = np.convolve(np.concatenate([v_out[500::-1],trace_conv0,v_out[:-500:-1]]),kernel,mode = 'same') 
+    trace_conv = trace_conv[500:500+len(v_out)]
+# =============================================================================
+#     trace_conv = trace_conv0
+# =============================================================================
+    
+    
+    
+    traces.append(v_out)
+    traces_t.append(t_out)
+    traces_conv.append(trace_conv)
+#%% generate downsampled trace
+traces_t_all = np.concatenate(traces_t)
+traces_conv_all = np.concatenate(traces_conv)
+trace_im = list()
+e_o_timediff =list()
+for frame_time in frame_times:
+    idx = np.argmax(traces_t_all>frame_time)
+    e_o_timediff.append(frame_time-traces_t_all[idx])
+    trace_im.append(traces_conv_all[idx])  
+thrashidx = np.abs(e_o_timediff) > 2*np.median(np.diff(traces_t_all))
+trace_im=np.asarray(trace_im)
+trace_im[thrashidx]=np.nan
+#%% calculate threshold values
+thresh_window_size = 1 #frames
+thresh_step_back = 1 #frames from AP ak
+ap_min_frame_diff = 5 # min frames from previous ap
+spikes_needed = np.concatenate([[True],ap_min_frame_diff<np.diff(real_spike_indices)])
+thresh_times = list()
+thresh_values = list()
+thresh_values_dff_filt = list()
+thresh_values_dff_filt_ap_peak = list()
+thresh_values_dff_filt_ap_thresh = list()
+thresh_values_downsampled_ephys = list()
+for spike_idx in real_spike_indices[spikes_needed]:
+    thresh_times.append(np.mean(frame_times[spike_idx-thresh_step_back-thresh_window_size:spike_idx-thresh_step_back]))
+    thresh_values.append(np.mean(roi_f[spike_idx-thresh_step_back-thresh_window_size:spike_idx-thresh_step_back]))
+    thresh_values_dff_filt.append(np.mean(dff_fit[spike_idx-thresh_step_back-thresh_window_size:spike_idx-thresh_step_back]))
+    thresh_values_dff_filt_ap_peak.append(np.mean(dff_fit_ap_peak[spike_idx-thresh_step_back-thresh_window_size:spike_idx-thresh_step_back]))
+    thresh_values_dff_filt_ap_thresh.append(np.mean(dff_fit_ap_thresh[spike_idx-thresh_step_back-thresh_window_size:spike_idx-thresh_step_back]))
+    thresh_values_downsampled_ephys.append(np.mean(trace_im[spike_idx-thresh_step_back-thresh_window_size:spike_idx-thresh_step_back]))
+#%% calculate optimal F0
+sigma = .01
+trace_im_filt = ndimage.gaussian_filter(trace_im,sigma*framerate)
+roi_f_filt = ndimage.gaussian_filter(roi_f,sigma*framerate)
+F0_optimal = roi_f_filt/((trace_im_filt-trace_im_filt[0])*-.0035+1)
+fig=plt.figure()
+ax = fig.add_subplot(321)
+ax.plot(trace_im*-1)
+ax.plot(roi_f)
+axx=fig.add_subplot(322, sharex=ax)
+ax.plot(F0_optimal,'g-')
+dff_optimal=(roi_f-F0_optimal)/F0_optimal
+dff_optimal_filt = ndimage.gaussian_filter(dff_optimal,sigma*framerate)
+axx.plot(trace_im*-.001)
+axx.plot(dff_optimal)
+
+axxx=fig.add_subplot(325)
+axxx.hist2d(trace_im,dff_optimal_filt,150,[[np.nanmin(trace_im),-40],[np.nanmin(dff_optimal_filt),np.nanmax(dff_optimal_filt)]],norm=colors.PowerNorm(gamma=0.3),cmap =  plt.get_cmap('jet'))
+
+axxxx=fig.add_subplot(324)
+F0_optimal_fft = F0_optimal[~np.isnan(F0_optimal)]
+fftout = np.abs(np.fft.rfft(F0_optimal_fft))
+freqs = np.fft.fftfreq(len(F0_optimal_fft))*framerate
+axxxx.plot(freqs[100:round(len(freqs)/2)],fftout[100:round(len(freqs)/2)])
+#axxxx.set_yscale('log')
+axxxx.set_xlim([0,10])
+
+ax_motion = fig.add_subplot(323, sharex=ax)
+ax_motion.plot(motion_corr_vectors)
+#%%
+sigma = .025
+roi_f_filt = ndimage.gaussian_filter(roi_f,sigma*framerate)
+roi_dff_filt = ndimage.gaussian_filter(roi_dff,sigma*framerate)
+dff_fit_filt = ndimage.gaussian_filter(dff_fit,sigma*framerate)
+dff_fit_ap_peak_filt =ndimage.gaussian_filter(dff_fit_ap_peak,sigma*framerate)
+dff_fit_ap_thresh_filt =ndimage.gaussian_filter(dff_fit_ap_thresh,sigma*framerate)
+trace_im_filt = ndimage.gaussian_filter(trace_im,sigma*framerate)
+
+
+fig=plt.figure()
+ax = fig.add_subplot(721)
+ax.plot(frame_times,roi_f)
+ax.plot(frame_times[real_spike_indices],roi_f[real_spike_indices],'ro')
+#ax.plot(frame_times[real_spike_indices[spikes_needed]],roi_f[real_spike_indices[spikes_needed]],'bo')
+ax.plot(thresh_times,thresh_values,'rx')
+ax.plot(frame_times,roi_f0,label = 'Volpy F0')
+ax.plot(frame_times,f0_fit_f,'g-',label = 'F fitted F0')
+ax.plot(frame_times,f0_fit_ap_peak,'k-',label = 'peak fitted F0')
+ax.plot(frame_times,f0_fit_ap_thresh,'b-',label = 'threshold fitted F0')
+ax.legend()
+ax.axes.get_xaxis().set_visible(False)
+ax.set_title('original F and F0s')
+
+ax_dff = fig.add_subplot(723, sharex=ax)
+ax_dff.plot(frame_times,roi_dff,'y-') #moving_average(roi_dff,4)
+#ax_dff.plot(frame_times,roi_dff_filt,'r-')
+ax_dff.plot(frame_times[real_spike_indices],roi_dff[real_spike_indices],'ro')
+ax_dff.plot(frame_times[real_spike_indices],roi_dff_filt[real_spike_indices],'bo')
+ax_dff.axes.get_xaxis().set_visible(False)
+ax_dff.set_title('VolPy')
+ax_dff.invert_yaxis()
+
+ax_dff_f0fit = fig.add_subplot(725, sharex=ax)
+ax_dff_f0fit.plot(frame_times,dff_fit,'g-')
+#ax_dff_f0fit.plot(frame_times,dff_fit_filt,'r-')
+ax_dff_f0fit.plot(frame_times[real_spike_indices],dff_fit[real_spike_indices],'ro')
+ax_dff_f0fit.plot(frame_times[real_spike_indices],dff_fit_filt[real_spike_indices],'bo')
+ax_dff_f0fit.plot(thresh_times,thresh_values_dff_filt,'rx')
+ax_dff_f0fit.set_title('single exponential fit')
+ax_dff_f0fit.axes.get_xaxis().set_visible(False)
+ax_dff_f0fit.invert_yaxis()
+
+ax_dff_peakfit = fig.add_subplot(727, sharex=ax)
+ax_dff_peakfit.plot(frame_times,dff_fit_ap_peak,'k-')
+#ax_dff_peakfit.plot(frame_times,dff_fit_ap_peak_filt,'r-')
+ax_dff_peakfit.plot(frame_times[real_spike_indices],dff_fit_ap_peak[real_spike_indices],'ro')
+ax_dff_peakfit.plot(frame_times[real_spike_indices],dff_fit_ap_peak_filt[real_spike_indices],'bo')
+ax_dff_peakfit.plot(thresh_times,thresh_values_dff_filt_ap_peak,'rx')
+ax_dff_peakfit.set_title('single exponential fit on AP peaks')
+ax_dff_peakfit.axes.get_xaxis().set_visible(False)
+ax_dff_peakfit.invert_yaxis()
+
+ax_dff_threshfit = fig.add_subplot(729, sharex=ax)
+ax_dff_threshfit.plot(frame_times,dff_fit_ap_thresh,'k-')
+#ax_dff_threshfit.plot(frame_times,dff_fit_ap_thresh_filt,'r-')
+ax_dff_threshfit.plot(frame_times[real_spike_indices],dff_fit_ap_thresh[real_spike_indices],'ro')
+ax_dff_threshfit.plot(frame_times[real_spike_indices],dff_fit_ap_thresh_filt[real_spike_indices],'bo')
+ax_dff_threshfit.plot(thresh_times,thresh_values_dff_filt_ap_thresh,'rx')
+ax_dff_threshfit.set_title('single exponential fit on AP thresh')
+ax_dff_threshfit.axes.get_xaxis().set_visible(False)
+ax_dff_threshfit.invert_yaxis()
+
+
+ax_ephys = fig.add_subplot(7,2,11, sharex=ax)
+for t,v,v_conv in zip(traces_t,traces,traces_conv):
+    #ax_ephys.plot(t,v,'k-')
+    ax_ephys.plot(t,v_conv,'k-')
+ax_ephys.plot(frame_times,trace_im,'g-')
+#ax_ephys.plot(frame_times,trace_im_filt,'r-')
+ax_ephys.plot(thresh_times,thresh_values_downsampled_ephys,'rx')
+
+
+ax_filt = fig.add_subplot(722, sharex=ax)
+ax_filt.plot(frame_times,roi_f,'g-')
+ax_filt.plot(frame_times,roi_f_filt,'k-')
+
+
+ax_dff_corr = fig.add_subplot(724)
+ax_dff_corr.hist2d(trace_im_filt,roi_dff_filt,150,[[np.nanmin(trace_im_filt),-40],[np.nanmin(roi_dff_filt),np.nanmax(roi_dff_filt)]],norm=colors.PowerNorm(gamma=0.3),cmap =  plt.get_cmap('jet'))
+ax_dff_corr.invert_yaxis()
+
+ax_dff_f0fit_corr = fig.add_subplot(726)
+ax_dff_f0fit_corr.hist2d(trace_im_filt,dff_fit_filt,150,[[np.nanmin(trace_im_filt),-40],[np.nanmin(dff_fit_filt),np.nanmax(dff_fit_filt)]],norm=colors.PowerNorm(gamma=0.3),cmap =  plt.get_cmap('jet'))
+ax_dff_f0fit_corr.invert_yaxis()
+
+ax_dff_peakfit_corr = fig.add_subplot(728)
+ax_dff_peakfit_corr.hist2d(trace_im_filt,dff_fit_ap_peak_filt,150,[[np.nanmin(trace_im_filt),-40],[np.nanmin(dff_fit_ap_peak_filt),np.nanmax(dff_fit_ap_peak_filt)]],norm=colors.PowerNorm(gamma=0.3),cmap =  plt.get_cmap('jet'))
+ax_dff_peakfit_corr.invert_yaxis()
+
+ax_dff_threshfit_corr = fig.add_subplot(7,2,10)
+ax_dff_threshfit_corr.hist2d(trace_im_filt,dff_fit_ap_thresh_filt,150,[[np.nanmin(trace_im_filt),-40],[np.nanmin(dff_fit_ap_thresh_filt),np.nanmax(dff_fit_ap_thresh_filt)]],norm=colors.PowerNorm(gamma=0.3),cmap =  plt.get_cmap('jet'))
+ax_dff_threshfit_corr.invert_yaxis()
+
+#%%
+# =============================================================================
+#         break
+#     break
+# #%%
+# =============================================================================
+thresh_ophys= np.asarray(thresh_ophys)
+apmaxtimes_all = np.asarray(apmaxtimes_all,float)
+apmaxdiffs = np.concatenate([[10],np.diff(apmaxtimes_all)])
+apmaxdiffs[apmaxdiffs>1]=1
+needed= apmaxdiffs>.05
+plt.plot(apmaxdiffs[needed],thresh_all[needed],'ko',ms=1)
+#%%
+plt.plot(baseline_all[needed],thresh_all[needed],'ko',ms=1)
+# =============================================================================
+# vs, stims= (ephys_patch.SweepStimulus()*ephysanal.SweepResponseCorrected()*ephys_patch.Sweep()&key&'sweep_start_time >150' &'sweep_start_time <300').fetch('response_trace_corrected','stimulus_trace')
+# v = (ephysanal.SweepResponseCorrected()&key&'sweep_number = 42').fetch1('response_trace_corrected')
+# =============================================================================
+#%%
+thresh_all =(imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails()&'roi_type = "SpikePursuit_base_subtr_mean"').fetch('ap_threshold')
+plt.hist(thresh_all,1000)
+
+
+
 #%%
 fig=plt.figure()
 ax = fig.add_axes([0,0,1,1])
@@ -125,7 +494,7 @@ data = plot_ephys_ophys_trace(key_cell,time_to_plot=25,trace_window = 1,show_e_a
 session = 1
 subject_id = 456462
 cell_number = 5
-roi_type = 'Spikepursuit'#'Spikepursuit'#'VolPy_denoised'#'SpikePursuit'#'VolPy_dexpF0'#'VolPy'#'SpikePursuit_dexpF0'#'VolPy_dexpF0'#''Spikepursuit'#'VolPy'#
+roi_type = 'SpikePursuit_base_subtr_mean'#'Spikepursuit'#'VolPy_denoised'#'SpikePursuit'#'VolPy_dexpF0'#'VolPy'#'SpikePursuit_dexpF0'#'VolPy_dexpF0'#''Spikepursuit'#'VolPy'#
 key_cell = {'session':session,'subject_id':subject_id,'cell_number':cell_number,'roi_type':roi_type }
 
 session_time, cell_recording_start = (experiment.Session()*ephys_patch.Cell()&key_cell).fetch1('session_time','cell_recording_start')
@@ -150,7 +519,6 @@ data = plot_ephys_ophys_trace(key_cell,
                               show_o_ap_peaks = False)
     #%%
 
-    
 
 #%%plot time offset between 1st ROI and real elphys
 min_corr_coeff = .1
