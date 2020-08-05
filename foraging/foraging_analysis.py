@@ -1,3 +1,5 @@
+import os
+os.chdir('/home/rozmar/Scripts/Python/DataPipeline')
 from datetime import datetime, timedelta, time
 import pandas as pd
 import numpy as np
@@ -11,9 +13,45 @@ import plot.plot_behavior as plot_behavior
 import time as timer
 from matplotlib.pyplot import cm
 
+#%%
+key = {'subject_id':453477}
+run_length, run_choice, run_hits,run_misses,run_ignores, run_consecutive_misses = (behavioranal.SessionRuns()&key).fetch('run_length','run_choice','run_hits','run_misses','run_ignores','run_consecutive_misses')
 
-#%% 
+plt.hist(run_misses/run_length,100)
+#%%
+import pandas as pd
+df_R= pd.DataFrame(behavioranal.SubjectFittedChoiceCoefficientsConvR())
+coeffs = df_R['coefficients_rewards_subject'].values
+timeconstants =df_R['filter_time_constants'][0]
+for coeff_now in coeffs:
+    plt.plot(timeconstants,coeff_now)
 
+
+#%% 2 lickport regression
+plot_behavior.plot_regression_coefficients(plottype = 'RNRC',
+                                           lickportnum = '2lp',
+                                           subjects = ['FOR01','FOR02','FOR03','FOR04','FOR05','FOR06','FOR07','FOR08','FOR09','FOR10','HC16'],
+                                           trialstoshow = 15,
+                                           show_low_rr = False ,
+                                           show_high_rr = False,
+                                           show_block_start = False,
+                                           show_block_end = False,
+                                           show_session_start = True,
+                                           show_session_end = True) 
+#%% 3 lickport regression
+plot_behavior.plot_regression_coefficients(plottype = 'RNRC',
+                                           lickportnum = '3lp',
+                                           subjects = [],
+                                           trialstoshow = 15,
+                                           show_low_rr = False ,
+                                           show_high_rr = False,
+                                           show_block_start = True,
+                                           show_block_end = True,
+                                           show_session_start = False,
+                                           show_session_end = False)
+
+
+#%%
 plot_behavior.plot_block_based_tuning_curves_three_lickports(overlay = True)
 #%% old version -  plot foraging efficiency
 wr_name = None
