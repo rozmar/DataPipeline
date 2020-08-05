@@ -379,7 +379,9 @@ def plot_regression_coefficients(plottype = 'NRC',
                                  show_low_rr = False ,
                                  show_high_rr = False,
                                  show_block_start = False,
-                                 show_block_end = False):
+                                 show_block_end = False,
+                                 show_session_start = False,
+                                 show_session_end = False):
     #%%
     plt.rcParams.update({'font.size': 15})
     cmap = cm.get_cmap('jet')
@@ -389,6 +391,9 @@ def plot_regression_coefficients(plottype = 'NRC',
     blockstartline = ':'
     blockendline = '--' 
     
+    sessionstartline = ':'
+    sessionendline = '--' 
+    
     
 # =============================================================================
 #     plottype = 'NRC'
@@ -396,8 +401,10 @@ def plot_regression_coefficients(plottype = 'NRC',
 #     subjects = []
 #     show_low_rr = False   
 #     show_high_rr = False   
-#     show_block_start = True
-#     show_block_end = True
+#     show_block_start = False
+#     show_block_end = False
+#     show_session_start = True
+#     show_session_end = True
 #     trialstoshow = 15
 # =============================================================================
     
@@ -474,17 +481,28 @@ def plot_regression_coefficients(plottype = 'NRC',
         subject_names_legend = list()
         #wridxs = list()
         subjectidxes = df_coeff['subject_id']== 'this is not a subject id'
+        #%
+        subjectnames_real =list()
+        for subject_id_now in df_coeff['subject_id'].values:
+            subjectnames_real.append((lab.WaterRestriction()&'subject_id = {}'.format(subject_id_now)).fetch1('water_restriction_number'))
+        subjectnames_real=np.sort(subjectnames_real)
+        subject_names=subjectnames_real
+            #%
         for subject_idx_now,wr_name in enumerate(subject_names):
             if subject_idx_now == len(subject_names)-1:
                 labelnow_l = 'low reward rate'
                 labelnow_h = 'high reward rate'
                 labelnow_blockstart = 'block start'
                 labelnow_blockend = 'block end'
+                labelnow_sessionstart = 'session start'
+                labelnow_sessionend = 'session end'
             else:
                 labelnow_l = None
                 labelnow_h = None
                 labelnow_blockstart = None
                 labelnow_blockend = None
+                labelnow_sessionstart = None
+                labelnow_sessionend = None
             subject_color = subject_idx_now/len(subject_names)
             subject_id = (lab.WaterRestriction() & 'water_restriction_number = "'+wr_name+'"').fetch('subject_id')[0]
             idx = df_coeff['subject_id']==subject_id
@@ -499,7 +517,11 @@ def plot_regression_coefficients(plottype = 'NRC',
                         ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_start'][idx].values[0],blockstartline,color = cmap(subject_color),label=labelnow_blockstart)
                     if show_block_end:
                         ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_end'][idx].values[0],blockendline,color = cmap(subject_color),label=labelnow_blockend)                        
-                        
+                    if show_session_start:
+                        ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_session_start'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_session_start'][idx].values[0],sessionstartline,color = cmap(subject_color),label=labelnow_sessionstart)
+                    if show_session_end:
+                        ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_session_end'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_session_end'][idx].values[0],sessionendline,color = cmap(subject_color),label=labelnow_sessionend)                        
+                      
                 if 'NR' in plottype:    
                     ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction][idx].values[0],color = cmap(subject_color),label= wr_name)
                     if show_low_rr:
@@ -510,6 +532,10 @@ def plot_regression_coefficients(plottype = 'NRC',
                         ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'][idx].values[0],blockstartline,color = cmap(subject_color),label=labelnow_blockstart)
                     if show_block_end:
                         ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'][idx].values[0],blockendline,color = cmap(subject_color),label=labelnow_blockend)                        
+                    if show_session_start:
+                        ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_session_start'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_session_start'][idx].values[0],sessionstartline,color = cmap(subject_color),label=labelnow_sessionstart)
+                    if show_session_end:
+                        ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_session_end'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_session_end'][idx].values[0],sessionendline,color = cmap(subject_color),label=labelnow_sessionend)                        
                     
                 if 'C' in plottype:    
                     ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction].mean())+1),df_coeff['coefficients_choices_subject'+direction][idx].values[0],color = cmap(subject_color),label= wr_name)
@@ -522,6 +548,10 @@ def plot_regression_coefficients(plottype = 'NRC',
                         ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_start'][idx].values[0],blockstartline,color = cmap(subject_color),label=labelnow_blockstart)
                     if show_block_end:
                         ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_end'][idx].values[0],blockendline,color = cmap(subject_color),label=labelnow_blockend)                        
+                    if show_session_start:
+                        ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_session_start'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_session_start'][idx].values[0],sessionstartline,color = cmap(subject_color),label=labelnow_sessionstart)
+                    if show_session_end:
+                        ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_session_end'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_session_end'][idx].values[0],sessionendline,color = cmap(subject_color),label=labelnow_sessionend)                        
                     
                     
                 subject_names_legend.append(wr_name)
@@ -541,6 +571,11 @@ def plot_regression_coefficients(plottype = 'NRC',
                 ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_start'][subjectidxes].mean(),'b'+blockstartline,linewidth = 4)
             if show_block_end:
                 ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_block_end'][subjectidxes].mean(),'r'+blockendline,linewidth = 4)
+            if show_session_start:
+                ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_session_start'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_session_start'][subjectidxes].mean(),'b'+sessionstartline,linewidth = 4)
+            if show_session_end:
+                ax1.plot(range(1,len(df_coeff['coefficients_rewards_subject'+direction+'_session_end'].mean())+1),df_coeff['coefficients_rewards_subject'+direction+'_session_end'][subjectidxes].mean(),'r'+sessionendline,linewidth = 4)
+
 
             ax1.plot([0,len(df_coeff['coefficients_rewards_subject'+direction].mean())],[0,0],'k-')
             ax1.set_xlim([0, trialstoshow])
@@ -560,7 +595,13 @@ def plot_regression_coefficients(plottype = 'NRC',
                 ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_start'][subjectidxes].mean(),'b'+blockstartline,linewidth = 4)
             if show_block_end:
                 ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_block_end'][subjectidxes].mean(),'r'+blockendline,linewidth = 4)
-                    
+            if show_session_start:
+                ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_session_start'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_session_start'][subjectidxes].mean(),'b'+sessionstartline,linewidth = 4)
+            if show_session_end:
+                ax2.plot(range(1,len(df_coeff['coefficients_nonrewards_subject'+direction+'_session_end'].mean())+1),df_coeff['coefficients_nonrewards_subject'+direction+'_session_end'][subjectidxes].mean(),'r'+sessionendline,linewidth = 4)
+                
+                
+                
             ax2.plot([0,len(df_coeff['coefficients_nonrewards_subject'+direction].mean())],[0,0],'k-')
             ax2.set_xlim([0, trialstoshow])
             ax['ax2'] = ax2
@@ -578,6 +619,10 @@ def plot_regression_coefficients(plottype = 'NRC',
                 ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_start'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_start'][subjectidxes].mean(),'b'+blockstartline,linewidth = 4)
             if show_block_end:
                 ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_block_end'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_block_end'][subjectidxes].mean(),'r'+blockendline,linewidth = 4)
+            if show_session_start:
+                ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_session_start'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_session_start'][subjectidxes].mean(),'b'+sessionstartline,linewidth = 4)
+            if show_session_end:
+                ax3.plot(range(1,len(df_coeff['coefficients_choices_subject'+direction+'_session_end'].mean())+1),df_coeff['coefficients_choices_subject'+direction+'_session_end'][subjectidxes].mean(),'r'+sessionendline,linewidth = 4)
             
             
             ax3.plot([0,len(df_coeff['coefficients_choices_subject'+direction].mean())],[0,0],'k-')
