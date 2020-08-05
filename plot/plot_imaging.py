@@ -431,7 +431,13 @@ def plot_AP_waveforms(key,
         #break
         
 
-def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',v0_max = -35,holding_min = -600,frame_rate_min =300, frame_rate_max = 800 ,bin_num = 10 ):       
+def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',
+                              v0_max = -35,
+                              holding_min = -600,
+                              frame_rate_min =300, 
+                              frame_rate_max = 1800 ,
+                              F0_min = 50, 
+                              bin_num = 10 ):       
     #%% Show S/N ratios for each AP
     cmap = cm.get_cmap('jet')
 # =============================================================================
@@ -457,7 +463,7 @@ def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',v0_max = -35,holding_min = -600
         cell = cell[1]
         key_cell = dict(cell)    
         del key_cell['Freq']
-        snratios,f0,peakamplitudes,noises = (imaging.Movie()*imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails()&key_cell&'ap_real = 1'&'movie_frame_rate > {}'.format(frame_rate_min)&'movie_frame_rate < {}'.format(frame_rate_max)).fetch('apwave_snratio','apwave_f0','apwave_peak_amplitude','apwave_noise')
+        snratios,f0,peakamplitudes,noises = (imaging.Movie()*imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails()&key_cell&'ap_real = 1'&'movie_frame_rate > {}'.format(frame_rate_min)&'movie_frame_rate < {}'.format(frame_rate_max)&'apwave_f0 > {}'.format(F0_min)).fetch('apwave_snratio','apwave_f0','apwave_peak_amplitude','apwave_noise')
         #f0 =  (imaging_gt.GroundTruthROI()*imaging.ROI()&key_cell).fetch('roi_f0')
         
         sweep = (imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()&key_cell).fetch('sweep_number')[0]
