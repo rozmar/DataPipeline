@@ -70,7 +70,8 @@ logging.basicConfig(format=
  # %% Setup some parameters for data and motion correction
  # dataset parameters
 #fr = fr                  # sample rate of the movie
-def run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi):
+def run_caiman_pipeline(movie,fr,fnames,savedir,caiman_parameters):
+    usematlabroi=caiman_parameters['usematlabroi']
     cpu_num = 16
     cpu_num_spikepursuit = 3
     #gsig_filt_micron = (4, 4)  
@@ -182,8 +183,196 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi):
     opts.change_params(params_dict={'fnames': fname_new})
     
     # %% SEGMENTATION
+    if caiman_parameters['dospikepursuit']:
+        roidir = savedir[:savedir.find('VolPy')] + 'Spikepursuit' + savedir[savedir.find('VolPy')+len('Volpy'):]
+        try:
+            files = os.listdir(roidir)
+        except:
+            files= []
+        if usematlabroi  and 'ROIs.mat' in files:        
+            ROIs =  loadmat(os.path.join(roidir, 'ROIs.mat'))['ROIs']
+            if len(np.shape(ROIs))==3:
+                ROIs  = np.moveaxis(np.asarray(ROIs,bool),2,0)
+            else:
+                ROIs = np.asarray([ROIs])
+            all_rois = ROIs
+            opts.change_params(params_dict={'ROIs':ROIs,
+                                                'index':list(range(ROIs.shape[0])),
+                                                'method':'SpikePursuit'})
+            
+        else:
+            #%
+            print('WTF')
+        
+        
+        
+        
+        # %% Trace Denoising and Spike Extraction
+        
+        c, dview, n_processes = cm.cluster.setup_cluster(backend='local', n_processes=cpu_num_spikepursuit , single_thread=False, maxtasksperchild=1)
+        #dview=None
+        vpy = VOLPY(n_processes=n_processes, dview=dview, params=opts)
+        vpy.fit(n_processes=n_processes, dview=dview)
+        
+   
+    #%%
+    print('saving parameters')
+    parameters = dict()
+    parameters['motion'] = opts.motion
+    parameters['data'] = opts.data
+    if caiman_parameters['dospikepursuit']:
+        parameters['volspike'] = opts.volspike
+    with open(os.path.join(savedir,'parameters.pickle'), 'wb') as outfile:
+        pickle.dump(parameters, outfile)
+    #%%  
+    if caiman_parameters['dospikepursuit']:    
+        volspikedata = dict()
+        volspikedata['estimates'] = vpy.estimates
+        volspikedata['params'] = vpy.params.data
+        with open(os.path.join(savedir,'spikepursuit.pickle'), 'wb') as outfile:
+            pickle.dump(volspikedata, outfile)
+    #%%
     
-    roidir = savedir[:savedir.find('VolPy')] + 'Spikepursuit' + savedir[savedir.find('VolPy')+len('Volpy'):]
+    for mcidx, mc_now in enumerate([mcrig,mc]):
+        motioncorr = dict()
+        motioncorr['fname'] = mc_now.fname
+        motioncorr['fname_tot_rig'] = mc_now.fname_tot_rig
+        motioncorr['mmap_file'] = mc_now.mmap_file
+        motioncorr['min_mov'] = mc_now.min_mov
+        motioncorr['shifts_rig'] = mc_now.shifts_rig
+        motioncorr['shifts_opencv'] = mc_now.shifts_opencv
+        motioncorr['niter_rig'] = mc_now.niter_rig
+        motioncorr['min_mov'] = mc_now.min_mov
+        motioncorr['templates_rig'] = mc_now.templates_rig
+        motioncorr['total_template_rig'] = mc_now.total_template_rig
+        try:
+            motioncorr['x_shifts_els'] = mc_now.x_shifts_els
+            motioncorr['y_shifts_els'] = mc_now.y_shifts_els
+        except:
+            pass 
+        with open(os.path.join(savedir,'motion_corr_'+str(mcidx)+'.pickle'), 'wb') as outfile:
+            pickle.dump(motioncorr, outfile)
+     #%% saving stuff
+    print('moving files')
+    for mmap_file in mcrig.mmap_file:
+        fname = pathlib.Path(mmap_file).name
+        os.remove(mmap_file)
+        #shutil.move(mmap_file, os.path.join(savedir,fname))
+    for mmap_file in mc.mmap_file:
+        fname = pathlib.Path(mmap_file).name
+        os.remove(mmap_file)
+        #shutil.move(mmap_file, os.path.join(savedir,fname))    
+        
+    fname = pathlib.Path(fname_new).name
+    
+
+
+    #Thread(target=shutil.copy, args=[fname_new, os.path.join(savedir,fname)]).start()
+    shutil.move(fname_new, os.path.join(savedir,fname))
+    
+    #print('waiting')
+    #time.sleep(1000)
+    # %% some visualization
+    plotstuff = False
+    if plotstuff:
+        print(np.where(vpy.estimates['passedLocalityTest'])[0])    # neurons that pass locality test
+        n = 0
+        
+        # Processed signal and spikes of neurons
+        plt.figure()
+        plt.plot(vpy.estimates['trace'][n])
+        plt.plot(vpy.estimates['spikeTimes'][n],
+                 np.max(vpy.estimates['trace'][n]) * np.ones(vpy.estimates['spikeTimes'][n].shape),
+                 color='g', marker='o', fillstyle='none', linestyle='none')
+        plt.title('signal and spike times')
+        plt.show()
+        # Location of neurons by Mask R-CNN or manual annotation
+        plt.figure()
+        if use_maskrcnn:
+            plt.imshow(ROIs_mrcnn[n])
+        else:
+            plt.imshow(ROIs[n])
+        mv = cm.load(fname_new)
+        plt.imshow(mv.mean(axis=0),alpha=0.5)
+        
+        # Spatial filter created by algorithm
+        plt.figure()
+        plt.imshow(vpy.estimates['spatialFilter'][n])
+        plt.colorbar()
+        plt.title('spatial filter')
+        plt.show()
+     
+     
+    
+    # %% STOP CLUSTER and clean up log files
+
+    cm.stop_server(dview=dview)
+    log_files = glob.glob('*_LOG_*')
+    for log_file in log_files:
+        os.remove(log_file)
+    
+
+
+
+
+
+
+
+
+
+def run_modified_caiman_pipeline(movie,fr,fnames,savedir,registered_movie_file,usematlabroi):
+    #%%
+    cpu_num = 12
+    cpu_num_spikepursuit = 3
+    #gsig_filt_micron = (4, 4)  
+    #max_shifts_micron = (6,6) 
+    #strides_micron = (60,60)
+    #overlaps_micron = (30, 30)   
+    
+    gsig_filt_micron = (4, 4)  
+    max_shifts_micron = (6,6) 
+    strides_micron = (30,30)
+    overlaps_micron = (15, 15)   
+    
+    max_deviation_rigid_micron = 4
+    
+    
+    pixel_size = movie['movie_pixel_size']
+    
+    ROIs = None                                     # Region of interests
+    index = None                                    # index of neurons
+    weights = None                                  # reuse spatial weights by 
+                                                   # opts.change_params(params_dict={'weights':vpy.estimates['weights']})
+    # motion correction parameters
+    pw_rigid = False                                # flag for pw-rigid motion correction
+    gSig_filt =   tuple(np.asarray(np.round(np.asarray(gsig_filt_micron)/float(pixel_size)),int))                          # size of filter, in general gSig (see below),
+                                                   # change this one if algorithm does not work
+    max_shifts = tuple(np.asarray(np.round(np.asarray(max_shifts_micron)/float(pixel_size)),int))
+    strides = tuple(np.asarray(np.round(np.asarray(strides_micron)/float(pixel_size)),int))    # start a new patch for pw-rigid motion correction every x pixels
+    overlaps =  tuple(np.asarray(np.round(np.asarray(overlaps_micron)/float(pixel_size)),int))    # start a new patch for pw-rigid motion correction every x pixels  
+                                                                                                    # overlap between pathes (size of patch strides+overlaps)
+    max_deviation_rigid = int(round(max_deviation_rigid_micron/pixel_size))                        # maximum deviation allowed for patch with respect to rigid shifts
+    border_nan = 'copy'
+    opts_dict = {
+        'fnames': registered_movie_file,
+        'fr': fr,
+        'index': index,
+        'ROIs': ROIs,
+        'weights': weights,
+        'pw_rigid': pw_rigid,
+        'max_shifts': max_shifts,
+        'gSig_filt': gSig_filt,
+        'strides': strides,
+        'overlaps': overlaps,
+        'max_deviation_rigid': max_deviation_rigid,
+        'border_nan': border_nan
+    }
+    opts = volparams(params_dict=opts_dict)
+    
+    
+    # %% SEGMENTATION
+    
+    roidir = savedir[:savedir.find('VolPy_modified')] + 'Spikepursuit' + savedir[savedir.find('VolPy_modified')+len('VolPy_modified'):]
     try:
         files = os.listdir(roidir)
     except:
@@ -201,77 +390,14 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi):
         
     else:
         #%
-        print('WTF')
-        # Create mean and correlation image
-        use_maskrcnn = True  # set to True to predict the ROIs using the mask R-CNN
-        if not use_maskrcnn:                 # use manual annotations
-            with h5py.File(path_ROIs, 'r') as fl:
-                ROIs = fl['mov'][()]  # load ROIs
-            opts.change_params(params_dict={'ROIs': ROIs,
-                                            'index': list(range(ROIs.shape[0])),
-                                            'method': 'SpikePursuit'})
-        else:
-            try:
-                m = cm.load(mc.mmap_file[0], subindices=slice(0, 20000))
-            except:
-                m = cm.load('/home/rozmar/Data/Voltage_imaging/Voltage_rig_1P/rozsam/20200120/40x_1xtube_10A_7_000_rig__d1_128_d2_512_d3_1_order_F_frames_2273_._els__d1_128_d2_512_d3_1_order_F_frames_2273_.mmap', subindices=slice(0, 20000))
-            m.fr = fr
-            img = m.mean(axis=0)
-            img = (img-np.mean(img))/np.std(img)
-            m1 = m.computeDFF(secsWindow=1, in_place=True)[0]
-            m = m - m1
-            Cn = m.local_correlations(swap_dim=False, eight_neighbours=True)
-            img_corr = (Cn-np.mean(Cn))/np.std(Cn)
-            summary_image = np.stack([img, img, img_corr], axis=2).astype(np.float32)
-            del m
-            del m1
-        
-            # %
-            # Mask R-CNN
-            config = neurons.NeuronsConfig()
-            class InferenceConfig(config.__class__):
-                # Run detection on one image at a time
-                GPU_COUNT = 1
-                IMAGES_PER_GPU = 1
-                DETECTION_MIN_CONFIDENCE = 0.7
-                IMAGE_RESIZE_MODE = "pad64"
-                IMAGE_MAX_DIM = 512
-                RPN_NMS_THRESHOLD = 0.7
-                POST_NMS_ROIS_INFERENCE = 1000
-            config = InferenceConfig()
-            config.display()
-            model_dir = os.path.join(caiman_datadir(), 'model')
-            DEVICE = "/cpu:0"  # /cpu:0 or /gpu:0
-            with tf.device(DEVICE):
-                model = modellib.MaskRCNN(mode="inference", model_dir=model_dir,
-                                          config=config)
-            weights_path = download_model('mask_rcnn')
-            model.load_weights(weights_path, by_name=True)
-            results = model.detect([summary_image], verbose=1)
-            r = results[0]
-            ROIs_mrcnn = r['masks'].transpose([2, 0, 1])
-        
-        # %% visualize the result
-            display_result = False
-            if display_result:
-                _, ax = plt.subplots(1,1, figsize=(16,16))
-                visualize.display_instances(summary_image, r['rois'], r['masks'], r['class_ids'], 
-                                        ['BG', 'neurons'], r['scores'], ax=ax,
-                                        title="Predictions")
-        # %% set rois
-            opts.change_params(params_dict={'ROIs':ROIs_mrcnn,
-                                            'index':list(range(ROIs_mrcnn.shape[0])),
-                                            'method':'SpikePursuit'})
-            #all_rois = ROIs_mrcnn
-    
-    
-    
+        print('WTF.. no ROIs defined.. sleeping')
+        time.sleep(1000)
     # %% Trace Denoising and Spike Extraction
     
     c, dview, n_processes = cm.cluster.setup_cluster(backend='local', n_processes=cpu_num_spikepursuit , single_thread=False, maxtasksperchild=1)
     #dview=None
-    vpy = VOLPY(n_processes=n_processes, dview=dview, params=opts)
-    vpy.fit(n_processes=n_processes, dview=dview)
+    vpy_modified = VOLPY(n_processes=n_processes, dview=dview, params=opts)
+    vpy_modified.fit(n_processes=n_processes, dview=dview)
         
    
     #%%
@@ -280,6 +406,7 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi):
     parameters['motion'] = opts.motion
     parameters['data'] = opts.data
     parameters['volspike'] = opts.volspike
+    #%%
     with open(os.path.join(savedir,'parameters.pickle'), 'wb') as outfile:
         pickle.dump(parameters, outfile)
     #%%    
@@ -367,13 +494,62 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi):
     log_files = glob.glob('*_LOG_*')
     for log_file in log_files:
         os.remove(log_file)
+
+
+#%%
+def populatevolpy_modified():
+    #%%
+    volpy_basedir = str(pathlib.Path.home())+'/Data/Voltage_imaging/VolPy/'        
+    volpy_modified_basedir = str(pathlib.Path.home())+'/Data/Voltage_imaging/VolPy_modified/'  
+    usematlabroi = True
+    movies = imaging.Movie().fetch(as_dict=True)    
+    for movie in movies:#[::-1]:
+        moviefiles = imaging.MovieFile()&movie
+        filenames,dirs,basedirs = moviefiles.fetch('movie_file_name','movie_file_directory','movie_file_repository')
+        fnames = list()
+        for filename,dir_now,basedir in zip(filenames,dirs,basedirs):
+            fnames.append(os.path.join(dj.config['locations.'+basedir],dir_now,filename))
+        fr = movie['movie_frame_rate']
+        loaddir = os.path.join(volpy_basedir,dir_now[dir_now.find('raw')+len('raw')+1:]) #,movie['movie_name'] # there is an additional directory here!
+        savedir = os.path.join(volpy_modified_basedir,dir_now[dir_now.find('raw')+len('raw')+1:]) #,movie['movie_name'] # there is an additional directory here!
     
+        pathlib.Path(savedir).mkdir(parents=True, exist_ok=True)
+        print(movie)
+        #time.sleep(5)
+        if len(os.listdir(savedir))>0:
+            print('already done.. skipped')
+        else:
+            roidir = loaddir[:loaddir.find('VolPy')] + 'Spikepursuit' + loaddir[loaddir.find('VolPy')+len('Volpy'):]
+            try:
+                files = os.listdir(roidir)
+            except:
+                files= []
+            if usematlabroi  and 'ROIs.mat' not in files:
+                print('no matlab ROIs found')
+            else:
+                #%
+                original_files= os.listdir(loaddir)
+                for file_now in original_files:
+                    if 'mmap' in file_now:
+                        registered_movie_file = os.path.join(loaddir,file_now)
+                        
+                #%
+# =============================================================================
+#                         print('waiting')
+#                         time.sleep(1000)
+# =============================================================================
+                        if movie['movie_frame_num']>500:
+                            run_modified_caiman_pipeline(movie,fr,fnames,savedir,registered_movie_file,usematlabroi)
+                            
+
+
     
     
 #%%
 def populatevolpy():
     volpy_basedir = str(pathlib.Path.home())+'/Data/Voltage_imaging/VolPy/'        
-    usematlabroi = True
+    parameters = {'usematlabroi' : False,
+                  'dospikepursuit':False}
     movies = imaging.Movie().fetch(as_dict=True)    
     for movie in movies:#[::-1]:
         moviefiles = imaging.MovieFile()&movie
@@ -387,7 +563,7 @@ def populatevolpy():
         pathlib.Path(savedir).mkdir(parents=True, exist_ok=True)
         print(movie)
         #time.sleep(5)
-        if len(os.listdir(savedir))>0:
+        if len(os.listdir(savedir))>0:# TODO only spikepursuit
             print('already done.. skipped')
         else:
             roidir = savedir[:savedir.find('VolPy')] + 'Spikepursuit' + savedir[savedir.find('VolPy')+len('Volpy'):]
@@ -395,13 +571,13 @@ def populatevolpy():
                 files = os.listdir(roidir)
             except:
                 files= []
-            if usematlabroi  and 'ROIs.mat' not in files:
+            if parameters['usematlabroi']  and 'ROIs.mat' not in files:
                 print('no matlab ROIs found')
             else:
                 #print('waiting')
                 #time.sleep(1000)
                 if movie['movie_frame_num']>500:
-                    run_caiman_pipeline(movie,fr,fnames,savedir,usematlabroi)
+                    run_caiman_pipeline(movie,fr,fnames,savedir,parameters)
      
 
 def merge_denoised_tiff_files(movie,loaddir,savedir):
