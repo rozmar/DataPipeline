@@ -5,7 +5,6 @@ import matplotlib
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import datajoint as dj
-
 dj.conn()
 from pipeline import pipeline_tools
 from pipeline import lab, experiment, ephys_patch, ephysanal, imaging, imaging_gt
@@ -18,7 +17,7 @@ from pathlib import Path
 import json
 import decimal
 import shutil
-
+import datetime
 font = {'size'   : 15}
 matplotlib.rc('font', **font)
 
@@ -34,7 +33,7 @@ def moving_average(a, n=3) : # moving average
 junction_potential = 13.5 #mV
 downsampled_rate = 10000 #Hz
 #%%
-overwrite = False
+overwrite = True
 gt_package_directory = '/home/rozmar/Data/Voltage_imaging/ground_truth'
 subject_ids = np.unique(imaging_gt.CellMovieCorrespondance().fetch('subject_id'))
 key_list = list()
@@ -50,23 +49,29 @@ for key in key_list:
     save_this_movie = True
     for movie in movies:
         print(movie)
+        sweep_numbers = movie['sweep_numbers']
+        del movie['sweep_numbers']
         if len(imaging_gt.GroundTruthROI()&movie&'roi_type = "VolPy"') == 0:
             print('no groundtruth.. skipped')
         else:
-            movie_dict = dict((imaging.Movie()&movie).fetch1())
+            movie_dict = dict((ephys_patch.Cell()*imaging_gt.CellMovieCorrespondance()*imaging.Movie()&movie).fetch1())
             for keynow in movie_dict.keys():
                 if type(movie_dict[keynow]) == decimal.Decimal:
                     movie_dict[keynow] = float(movie_dict[keynow])
+                elif type(movie_dict[keynow]) == datetime.timedelta:
+                    movie_dict[keynow] = str(movie_dict[keynow])
+                elif type(movie_dict[keynow]) == np.ndarray:
+                    movie_dict[keynow] = movie_dict[keynow].tolist()
+                    
             save_dir_base = os.path.join(gt_package_directory,str(key['subject_id']),'Cell_{}'.format(key['cell_number']),movie_dict['movie_name'])
             if ((os.path.isdir(save_dir_base) and (len(os.listdir(save_dir_base))>3 and not overwrite))):
                 print('already exported, skipped')
             else:
-                sweep_numbers = movie['sweep_numbers']
-                del movie['sweep_numbers']
                 session_time, cell_recording_start = (experiment.Session()*ephys_patch.Cell()&key).fetch1('session_time','cell_recording_start')
                 first_movie_start_time =  np.min(np.asarray(((imaging.Movie()*imaging_gt.GroundTruthROI())&key).fetch('movie_start_time'),float))
                 first_movie_start_time_real = first_movie_start_time + session_time.total_seconds()
                 frame_times = (imaging.MovieFrameTimes()&movie).fetch1('frame_times') - cell_recording_start.total_seconds() + session_time.total_seconds()
+                motion_corr_vectors = np.asarray((imaging.MotionCorrection()*imaging.RegisteredMovie()&movie&'motion_correction_method  = "VolPy"'&'motion_corr_description= "rigid motion correction done with VolPy"').fetch1('motion_corr_vectors'))
                 movie_dict['movie_start_time'] = frame_times[0]        
                 movie_files = list()
                 repositories , directories , fnames = (imaging.MovieFile() & movie).fetch('movie_file_repository','movie_file_directory','movie_file_name')
@@ -135,22 +140,26 @@ for key in key_list:
                     Path(save_dir_base).mkdir(parents=True, exist_ok=True)
                     Path(save_dir_ephys).mkdir(parents=True, exist_ok=True)
                     Path(save_dir_movie).mkdir(parents=True, exist_ok=True)
-                    for ephys_data,ephys_metadata,sweep_number in zip(sweepdata_out,sweepmetadata_out,sweep_numbers):
-                        #np.save(os.path.join(save_dir_ephys,'sweep_{}.npy'.format(sweep_number)),ephys_data)
-                        np.savez_compressed(os.path.join(save_dir_ephys,'sweep_{}.npz'.format(sweep_number)),
-                                            time=ephys_data[0],
-                                            voltage = ephys_data[1],
-                                            stimulus = ephys_data[2],
-                                            units = np.asarray(ephys_metadata['data_units']))
-                        with open(os.path.join(save_dir_ephys,'sweep_{}.json'.format(sweep_number)), 'w') as outfile:
-                            json.dump(ephys_metadata, outfile, indent=2, sort_keys=True)
-                    for movie_file in movie_files:
-                        shutil.copyfile(movie_file,os.path.join(save_dir_movie,Path(movie_file).name))
+# =============================================================================
+#                     for ephys_data,ephys_metadata,sweep_number in zip(sweepdata_out,sweepmetadata_out,sweep_numbers):
+#                         #np.save(os.path.join(save_dir_ephys,'sweep_{}.npy'.format(sweep_number)),ephys_data)
+#                         np.savez_compressed(os.path.join(save_dir_ephys,'sweep_{}.npz'.format(sweep_number)),
+#                                             time=ephys_data[0],
+#                                             voltage = ephys_data[1],
+#                                             stimulus = ephys_data[2],
+#                                             units = np.asarray(ephys_metadata['data_units']))
+#                         with open(os.path.join(save_dir_ephys,'sweep_{}.json'.format(sweep_number)), 'w') as outfile:
+#                             json.dump(ephys_metadata, outfile, indent=2, sort_keys=True)
+#                     for movie_file in movie_files:
+#                         shutil.copyfile(movie_file,os.path.join(save_dir_movie,Path(movie_file).name))
+# =============================================================================
                         #%
-                    with open(os.path.join(save_dir_base,'movie_metadata.json'.format(sweep_number)), 'w') as outfile:
+                    with open(os.path.join(save_dir_base,'movie_metadata.json'), 'w') as outfile:
                         json.dump(movie_dict, outfile, indent=2, sort_keys=True)
                         #%
                     np.save(os.path.join(save_dir_base,'frame_times.npy'), frame_times)
+                    np.save(os.path.join(save_dir_base,'motion_corr_shifts_rigid.npy'), motion_corr_vectors)
+                    
 
 # =============================================================================
 #         snratios = (imaging_gt.GroundTruthROI()*imaging_gt.ROIAPWave()*ephysanal.ActionPotentialDetails()&movie&'ap_real = 1').fetch('apwave_snratio')
@@ -169,6 +178,8 @@ overwrite_images=True
 subject_ids = os.listdir(ground_truth_basedir)
 for subject_id in subject_ids:
     subject_dir = os.path.join(ground_truth_basedir,subject_id)
+    if not os.path.isdir(subject_dir):
+        continue
     cell_ids = os.listdir(subject_dir)
     for cell_id in cell_ids:
         cell_dir = os.path.join(subject_dir,cell_id)
@@ -183,6 +194,7 @@ for subject_id in subject_ids:
             with open(os.path.join(movie_dir,'movie_metadata.json')) as json_file:
                 movie_metadata = json.load(json_file)
             frame_times = np.load(os.path.join(movie_dir,'frame_times.npy'))
+            pixel_shifts = np.load(os.path.join(movie_dir,'motion_corr_shifts_rigid.npy'))
             key_roi = {'subject_id': movie_metadata['subject_id'],
                        'session': movie_metadata['session'],
                        'movie_number': movie_metadata['movie_number'],
@@ -224,6 +236,7 @@ for subject_id in subject_ids:
                 ax_ap1 = fig.add_axes([0,-.8,2,.4])
                 ax_ap2 = ax_ap1.twinx()
                 ax_snr = fig.add_axes([0,-1.3,2,.4])
+                
                 for t,response,stimulus,metadata_now in zip(sweep_time,sweep_response,sweep_stimulus,sweep_metadata):
                     ax_ephys.plot(t,response,'k-')
                     ax_stim.plot(t,stimulus,'k-')
@@ -246,7 +259,7 @@ for subject_id in subject_ids:
                     for dff_now,alpha_now in zip(dff_list,np.arange(1,1/(len(dff_list)+1),-1/(len(dff_list)+1))):
                         dfftoplotnow = dff_now + prevminval
                         ax_ophys.plot(frame_times,dfftoplotnow,'g-',alpha=alpha_now)
-                        prevminval = np.min(dfftoplotnow) -.005
+                        prevminval = np.min(dfftoplotnow) -.01
                     #ax_ophys.plot(frame_times,dff,'g-')
                     ax_ophys.autoscale(tight = True)
                     ax_ophys.invert_yaxis()
@@ -254,6 +267,20 @@ for subject_id in subject_ids:
                     ax_ophys.set_ylabel('dF/F')
                     vals = ax_ophys.get_yticks()
                     ax_ophys.set_yticklabels(['{:,.2%}'.format(x) for x in vals])
+                    
+                    ax_rigid_shifts_x = fig.add_axes([0,-1.8,2,.4], sharex=ax_ophys)
+                    ax_rigid_shifts_y =ax_rigid_shifts_x.twinx()
+                    ax_rigid_shifts_x.plot(frame_times,pixel_shifts[:,0],'b-')
+                    ax_rigid_shifts_y.plot(frame_times,pixel_shifts[:,1],'r-')
+                    ax_rigid_shifts_x.set_ylim([np.min(pixel_shifts[:,0]),np.max(pixel_shifts[:,0])+np.max(pixel_shifts[:,0])-np.min(pixel_shifts[:,0])])
+                    ax_rigid_shifts_y.set_ylim([np.min(pixel_shifts[:,1])-(np.max(pixel_shifts[:,1])-np.min(pixel_shifts[:,1])),np.max(pixel_shifts[:,1])])
+                    ax_rigid_shifts_x.set_ylabel('X rigid shift')
+                    ax_rigid_shifts_y.set_ylabel('Y rigid shift')
+                    ax_rigid_shifts_x.tick_params(axis='y', colors='blue')
+                    ax_rigid_shifts_y.tick_params(axis='y', colors='red')
+                    ax_rigid_shifts_x.yaxis.label.set_color('blue')
+                    ax_rigid_shifts_y.yaxis.label.set_color('red')
+                    ax_rigid_shifts_x.set_xlabel('Time from obtaining whole cell (s)')
                 
                 ax_snr.set_xlim([frame_times[0],frame_times[-1]])
                 ax_snr.set_ylim([0,ax_snr.get_ylim()[1]])
@@ -270,8 +297,11 @@ for subject_id in subject_ids:
                 ax_ephys.set_ylabel('Membrane potential (mV)')
     
                 ax_stim.set_xlim([frame_times[0],frame_times[-1]])
-                ax_snr.set_xlabel('Time from obtaining whole cell (s)')
+                #ax_snr.set_xlabel('Time from obtaining whole cell (s)')
                 ax_stim.set_ylabel('Stimulus (pA)')
+                
+                ax_rigid_shifts_x
+                
                 plt.show()
                 #%
                 if sweep_metadata[0]['neutralizationenable'] == 0:
@@ -321,7 +351,7 @@ for subject_id in subject_ids:
                     roimasks_all.append(roimask_now/np.max(roimask_now))
                 roimasks = np.sum(np.asarray(roimasks_all),0)
                 meanimage = (imaging.RegisteredMovie()&key_roi).fetch1('registered_movie_mean_image')
-                  #%%
+                  #%
                 fig_images = plt.figure()
                 ax_meanimage = fig_images.add_axes([0,0,1,1])
                 im = ax_meanimage.imshow(meanimage,cmap=cmap)
@@ -335,6 +365,7 @@ for subject_id in subject_ids:
                 ax_ROIs.set_title('ROIs')
                 #fig_images.colorbar(im)
                 fig_images.savefig(os.path.join(fig_dir,'movie_mean_image.png'), bbox_inches='tight')
+               # time.sleep(1000)
                 #%%
 # =============================================================================
 #             except:
