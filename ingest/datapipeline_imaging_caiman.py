@@ -71,7 +71,9 @@ logging.basicConfig(format=
  # dataset parameters
 #fr = fr                  # sample rate of the movie
 def run_caiman_pipeline(movie,fr,fnames,savedir,caiman_parameters):
+    #%%
     usematlabroi=caiman_parameters['usematlabroi']
+    
     cpu_num = 16
     cpu_num_spikepursuit = 3
     #gsig_filt_micron = (4, 4)  
@@ -118,79 +120,96 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,caiman_parameters):
         'border_nan': border_nan
     }
     opts = volparams(params_dict=opts_dict)
-    
-    # %% play the movie (optional)
-    # playing the movie using opencv. It requires loading the movie in memory.
-    # To close the video press q
-    display_images = False
-    
-    if display_images:
-        m_orig = cm.load(fnames)
-        ds_ratio = 0.2
-        moviehandle = m_orig.resize(1, 1, ds_ratio)
-        moviehandle.play(q_max=99.5, fr=60, magnification=2)
-    
-     # %% start a cluster for parallel processing
-    
-    c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=cpu_num , single_thread=False)
-    
-    # % MOTION CORRECTION
-    # Create a motion correction object with the specified parameters
-    mcrig = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
-    # Run piecewise rigid motion correction
-    #%
-    mcrig.motion_correct(save_movie=True)
-    dview.terminate()
-    
-    # % MOTION CORRECTION2
-    opts.change_params({'pw_rigid': True})
-    c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=cpu_num , single_thread=False)
-    # Create a motion correction object with the specified parameters
-    mc = MotionCorrect(mcrig.mmap_file, dview=dview, **opts.get_group('motion'))
-    # Run piecewise rigid motion correction
-    mc.motion_correct(save_movie=True)
-    dview.terminate()
-    
-    # %% motion correction compared with original movie
-    display_images = False
-    if display_images:
-        m_orig = cm.load(fnames)
-        m_rig = cm.load(mcrig.mmap_file)
-        m_pwrig = cm.load(mc.mmap_file)
-        ds_ratio = 0.2
-        moviehandle = cm.concatenate([m_orig.resize(1, 1, ds_ratio) - mc.min_mov * mc.nonneg_movie,
-                                      m_rig.resize(1, 1, ds_ratio),m_pwrig.resize(1, 1, ds_ratio)], axis=2)
-        moviehandle.play(fr=60, q_max=99.5, magnification=2)  # press q to exit
-    # % movie subtracted from the mean
-        m_orig2 = (m_orig - np.mean(m_orig, axis=0))
-        m_rig2 = (m_rig - np.mean(m_rig, axis=0))
-        m_pwrig2 = (m_pwrig - np.mean(m_pwrig, axis=0))
-        moviehandle1 = cm.concatenate([m_orig2.resize(1, 1, ds_ratio),
-                                       m_rig2.resize(1, 1, ds_ratio),m_pwrig2.resize(1, 1, ds_ratio)], axis=2)
-        moviehandle1.play(fr=60, q_max=99.5, magnification=2)
-    
-    # %% Memory Mapping
-    c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=cpu_num , single_thread=False)
-    border_to_0 = 0 if mc.border_nan == 'copy' else mc.border_to_0
-    fname_new = cm.save_memmap_join(mc.mmap_file, base_name='memmap_',
-                               add_to_mov=border_to_0, dview=dview, n_chunks=10)
-    dview.terminate()
-    
-     # %% change fnames to the new motion corrected one
-    opts.change_params(params_dict={'fnames': fname_new})
+    #%%
+    if not caiman_parameters['motion_correction_already_done']:
+        
+        # %% play the movie (optional)
+        # playing the movie using opencv. It requires loading the movie in memory.
+        # To close the video press q
+        display_images = False
+        
+        if display_images:
+            m_orig = cm.load(fnames)
+            ds_ratio = 0.2
+            moviehandle = m_orig.resize(1, 1, ds_ratio)
+            moviehandle.play(q_max=99.5, fr=60, magnification=2)
+        
+         # %% start a cluster for parallel processing
+        
+        c, dview, n_processes = cm.cluster.setup_cluster(
+            backend='local', n_processes=cpu_num , single_thread=False)
+        
+        # % MOTION CORRECTION
+        # Create a motion correction object with the specified parameters
+        mcrig = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
+        # Run piecewise rigid motion correction
+        #%
+        mcrig.motion_correct(save_movie=True)
+        dview.terminate()
+        
+        # % MOTION CORRECTION2
+        opts.change_params({'pw_rigid': True})
+        c, dview, n_processes = cm.cluster.setup_cluster(
+            backend='local', n_processes=cpu_num , single_thread=False)
+        # Create a motion correction object with the specified parameters
+        mc = MotionCorrect(mcrig.mmap_file, dview=dview, **opts.get_group('motion'))
+        # Run piecewise rigid motion correction
+        mc.motion_correct(save_movie=True)
+        dview.terminate()
+        
+        # %% motion correction compared with original movie
+        display_images = False
+        if display_images:
+            m_orig = cm.load(fnames)
+            m_rig = cm.load(mcrig.mmap_file)
+            m_pwrig = cm.load(mc.mmap_file)
+            ds_ratio = 0.2
+            moviehandle = cm.concatenate([m_orig.resize(1, 1, ds_ratio) - mc.min_mov * mc.nonneg_movie,
+                                          m_rig.resize(1, 1, ds_ratio),m_pwrig.resize(1, 1, ds_ratio)], axis=2)
+            moviehandle.play(fr=60, q_max=99.5, magnification=2)  # press q to exit
+        # % movie subtracted from the mean
+            m_orig2 = (m_orig - np.mean(m_orig, axis=0))
+            m_rig2 = (m_rig - np.mean(m_rig, axis=0))
+            m_pwrig2 = (m_pwrig - np.mean(m_pwrig, axis=0))
+            moviehandle1 = cm.concatenate([m_orig2.resize(1, 1, ds_ratio),
+                                           m_rig2.resize(1, 1, ds_ratio),m_pwrig2.resize(1, 1, ds_ratio)], axis=2)
+            moviehandle1.play(fr=60, q_max=99.5, magnification=2)
+        
+        # %% Memory Mapping
+        c, dview, n_processes = cm.cluster.setup_cluster(
+            backend='local', n_processes=cpu_num , single_thread=False)
+        border_to_0 = 0 if mc.border_nan == 'copy' else mc.border_to_0
+        fname_new = cm.save_memmap_join(mc.mmap_file, base_name='memmap_',
+                                   add_to_mov=border_to_0, dview=dview, n_chunks=10)
+        dview.terminate()
+        
+         # %% change fnames to the new motion corrected one
+        opts.change_params(params_dict={'fnames': fname_new})
+    else:
+        #%%
+        files = os.listdir(savedir)
+        for file in files:
+            if '.mmap' in file:
+                break
+        fname_new = os.path.join(savedir,file)
+        opts.change_params(params_dict={'fnames': fname_new})
+        
+        
     
     # %% SEGMENTATION
     if caiman_parameters['dospikepursuit']:
-        roidir = savedir[:savedir.find('VolPy')] + 'Spikepursuit' + savedir[savedir.find('VolPy')+len('Volpy'):]
+        roidir_matlab = savedir[:savedir.find('VolPy')] + 'Spikepursuit' + savedir[savedir.find('VolPy')+len('Volpy'):]
         try:
-            files = os.listdir(roidir)
+            files_matlab = os.listdir(roidir)
         except:
-            files= []
-        if usematlabroi  and 'ROIs.mat' in files:        
-            ROIs =  loadmat(os.path.join(roidir, 'ROIs.mat'))['ROIs']
+            files_matlab= []
+        roidir_volpy = savedir[:savedir.find('VolPy')] + 'ROI' + savedir[savedir.find('VolPy')+len('Volpy'):]
+        try:
+            files_volpy = os.listdir(roidir_volpy)
+        except:
+            files_volpy= []
+        if usematlabroi  and 'ROIs.mat' in files_matlab:        
+            ROIs =  loadmat(os.path.join(roidir_matlab, 'ROIs.mat'))['ROIs']
             if len(np.shape(ROIs))==3:
                 ROIs  = np.moveaxis(np.asarray(ROIs,bool),2,0)
             else:
@@ -199,7 +218,17 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,caiman_parameters):
             opts.change_params(params_dict={'ROIs':ROIs,
                                                 'index':list(range(ROIs.shape[0])),
                                                 'method':'SpikePursuit'})
+        elif caiman_parameters['usevolpyroi'] and 'VolPy.npy' in files_volpy:      
+            ROIs_original =  np.load(os.path.join(roidir_volpy, 'VolPy.npy'))
+            roinum = int(np.max(np.unique(ROIs_original)))
+            ROIs=np.asarray(np.zeros([int(roinum),ROIs_original.shape[0],ROIs_original.shape[1]]),bool)
+            for i in range(1,roinum+1):
+                ROIs[i-1,ROIs_original==i]=True
             
+            all_rois = ROIs
+            opts.change_params(params_dict={'ROIs':ROIs,
+                                            'index':list(range(ROIs.shape[0])),
+                                            'method':'SpikePursuit'})
         else:
             #%
             print('WTF')
@@ -216,59 +245,62 @@ def run_caiman_pipeline(movie,fr,fnames,savedir,caiman_parameters):
         
    
     #%%
-    print('saving parameters')
-    parameters = dict()
-    parameters['motion'] = opts.motion
-    parameters['data'] = opts.data
-    if caiman_parameters['dospikepursuit']:
-        parameters['volspike'] = opts.volspike
-    with open(os.path.join(savedir,'parameters.pickle'), 'wb') as outfile:
-        pickle.dump(parameters, outfile)
-    #%%  
     if caiman_parameters['dospikepursuit']:    
         volspikedata = dict()
         volspikedata['estimates'] = vpy.estimates
         volspikedata['params'] = vpy.params.data
         with open(os.path.join(savedir,'spikepursuit.pickle'), 'wb') as outfile:
-            pickle.dump(volspikedata, outfile)
-    #%%
-    
-    for mcidx, mc_now in enumerate([mcrig,mc]):
-        motioncorr = dict()
-        motioncorr['fname'] = mc_now.fname
-        motioncorr['fname_tot_rig'] = mc_now.fname_tot_rig
-        motioncorr['mmap_file'] = mc_now.mmap_file
-        motioncorr['min_mov'] = mc_now.min_mov
-        motioncorr['shifts_rig'] = mc_now.shifts_rig
-        motioncorr['shifts_opencv'] = mc_now.shifts_opencv
-        motioncorr['niter_rig'] = mc_now.niter_rig
-        motioncorr['min_mov'] = mc_now.min_mov
-        motioncorr['templates_rig'] = mc_now.templates_rig
-        motioncorr['total_template_rig'] = mc_now.total_template_rig
-        try:
-            motioncorr['x_shifts_els'] = mc_now.x_shifts_els
-            motioncorr['y_shifts_els'] = mc_now.y_shifts_els
-        except:
-            pass 
-        with open(os.path.join(savedir,'motion_corr_'+str(mcidx)+'.pickle'), 'wb') as outfile:
-            pickle.dump(motioncorr, outfile)
-     #%% saving stuff
-    print('moving files')
-    for mmap_file in mcrig.mmap_file:
-        fname = pathlib.Path(mmap_file).name
-        os.remove(mmap_file)
-        #shutil.move(mmap_file, os.path.join(savedir,fname))
-    for mmap_file in mc.mmap_file:
-        fname = pathlib.Path(mmap_file).name
-        os.remove(mmap_file)
-        #shutil.move(mmap_file, os.path.join(savedir,fname))    
+            pickle.dump(volspikedata, outfile)    
+
+    if not caiman_parameters['motion_correction_already_done']:        
+        print('saving parameters')
+        parameters = dict()
+        parameters['motion'] = opts.motion
+        parameters['data'] = opts.data
+        if caiman_parameters['dospikepursuit']:
+            parameters['volspike'] = opts.volspike
+        with open(os.path.join(savedir,'parameters.pickle'), 'wb') as outfile:
+            pickle.dump(parameters, outfile)
+        #%
         
-    fname = pathlib.Path(fname_new).name
+        #%
+        
+        for mcidx, mc_now in enumerate([mcrig,mc]):
+            motioncorr = dict()
+            motioncorr['fname'] = mc_now.fname
+            motioncorr['fname_tot_rig'] = mc_now.fname_tot_rig
+            motioncorr['mmap_file'] = mc_now.mmap_file
+            motioncorr['min_mov'] = mc_now.min_mov
+            motioncorr['shifts_rig'] = mc_now.shifts_rig
+            motioncorr['shifts_opencv'] = mc_now.shifts_opencv
+            motioncorr['niter_rig'] = mc_now.niter_rig
+            motioncorr['min_mov'] = mc_now.min_mov
+            motioncorr['templates_rig'] = mc_now.templates_rig
+            motioncorr['total_template_rig'] = mc_now.total_template_rig
+            try:
+                motioncorr['x_shifts_els'] = mc_now.x_shifts_els
+                motioncorr['y_shifts_els'] = mc_now.y_shifts_els
+            except:
+                pass 
+            with open(os.path.join(savedir,'motion_corr_'+str(mcidx)+'.pickle'), 'wb') as outfile:
+                pickle.dump(motioncorr, outfile)
+         #%saving stuff
+        print('moving files')
+        for mmap_file in mcrig.mmap_file:
+            fname = pathlib.Path(mmap_file).name
+            os.remove(mmap_file)
+            #shutil.move(mmap_file, os.path.join(savedir,fname))
+        for mmap_file in mc.mmap_file:
+            fname = pathlib.Path(mmap_file).name
+            os.remove(mmap_file)
+            #shutil.move(mmap_file, os.path.join(savedir,fname))    
+            
+        fname = pathlib.Path(fname_new).name
+        
     
-
-
-    #Thread(target=shutil.copy, args=[fname_new, os.path.join(savedir,fname)]).start()
-    shutil.move(fname_new, os.path.join(savedir,fname))
+    
+        #Thread(target=shutil.copy, args=[fname_new, os.path.join(savedir,fname)]).start()
+        shutil.move(fname_new, os.path.join(savedir,fname))
     
     #print('waiting')
     #time.sleep(1000)
@@ -534,10 +566,8 @@ def populatevolpy_modified():
                         registered_movie_file = os.path.join(loaddir,file_now)
                         
                 #%
-# =============================================================================
-#                         print('waiting')
-#                         time.sleep(1000)
-# =============================================================================
+                        print('waiting')
+                        time.sleep(1000)
                         if movie['movie_frame_num']>500:
                             run_modified_caiman_pipeline(movie,fr,fnames,savedir,registered_movie_file,usematlabroi)
                             
@@ -547,9 +577,11 @@ def populatevolpy_modified():
     
 #%%
 def populatevolpy():
+    #%%
     volpy_basedir = str(pathlib.Path.home())+'/Data/Voltage_imaging/VolPy/'        
     parameters = {'usematlabroi' : False,
-                  'dospikepursuit':False}
+                  'dospikepursuit':True,
+                  'usevolpyroi':True}
     movies = imaging.Movie().fetch(as_dict=True)    
     for movie in movies:#[::-1]:
         moviefiles = imaging.MovieFile()&movie
@@ -563,23 +595,40 @@ def populatevolpy():
         pathlib.Path(savedir).mkdir(parents=True, exist_ok=True)
         print(movie)
         #time.sleep(5)
-        if len(os.listdir(savedir))>0:# TODO only spikepursuit
+        if (len(os.listdir(savedir))>0 and not parameters['dospikepursuit']) or ('spikepursuit.pickle' in os.listdir(savedir) and parameters['dospikepursuit']):
             print('already done.. skipped')
         else:
-            roidir = savedir[:savedir.find('VolPy')] + 'Spikepursuit' + savedir[savedir.find('VolPy')+len('Volpy'):]
-            try:
-                files = os.listdir(roidir)
-            except:
-                files= []
-            if parameters['usematlabroi']  and 'ROIs.mat' not in files:
-                print('no matlab ROIs found')
+            if parameters['usematlabroi']:
+                roidir = savedir[:savedir.find('VolPy')] + 'Spikepursuit' + savedir[savedir.find('VolPy')+len('Volpy'):]
+                try:
+                    files = os.listdir(roidir)
+                except:
+                    files= []
+                if parameters['usematlabroi']  and 'ROIs.mat' not in files:
+                    print('no matlab ROIs found')
+                    continue
+            if parameters['usevolpyroi']:
+                roidir = savedir[:savedir.find('VolPy')] + 'ROI' + savedir[savedir.find('VolPy')+len('Volpy'):]
+                try:
+                    files = os.listdir(roidir)
+                except:
+                    files= []
+                if parameters['usevolpyroi']  and 'VolPy.npy' not in files:
+                    print('no VolPy ROIs found')
+                    continue
+            if len(os.listdir(savedir))>0:
+                parameters['motion_correction_already_done']=True
             else:
-                #print('waiting')
-                #time.sleep(1000)
-                if movie['movie_frame_num']>500:
-                    run_caiman_pipeline(movie,fr,fnames,savedir,parameters)
+                parameters['motion_correction_already_done']=False
+# =============================================================================
+#                 
+#             print('waiting')
+#             time.sleep(1000)
+# =============================================================================
+            if movie['movie_frame_num']>500:
+                run_caiman_pipeline(movie,fr,fnames,savedir,parameters)
      
-
+#%%
 def merge_denoised_tiff_files(movie,loaddir,savedir):
     #%%
     cpu_num = 2

@@ -32,6 +32,49 @@ def moving_average(a, n=3) : # moving average
 
 junction_potential = 13.5 #mV
 downsampled_rate = 10000 #Hz
+#%% metadata for methods
+subject_ids = np.unique(imaging.Movie().fetch('subject_id'))
+movie_num_list = list()
+sex_list = list()
+age_first_surgery_list = list()
+expression_time_list = list()
+ml_list = list()
+ap_list=list()
+depth_list = list()
+for subject_id in subject_ids:
+    virus_ids = (lab.Surgery.VirusInjection()&'subject_id = {}'.format(subject_id)).fetch('virus_id')
+    virus_id = virus_ids[0]
+    virus_name = (lab.Virus()&'virus_id = {}'.format(virus_id)).fetch1('virus_name')
+    if virus_name != 'syn-FLEX-Voltron-ST':
+        continue
+    if len(lab.Surgery()&'subject_id = {}'.format(subject_id))!=2:
+        print('only {} surgery for {}'.format(len(lab.Surgery()&'subject_id = {}'.format(subject_id)),subject_id))
+        continue
+    movie_num_list.append(len(imaging.Movie()&'subject_id = {}'.format(subject_id)))
+    date_of_birth,sex = (lab.Subject()&'subject_id = {}'.format(subject_id)).fetch1('date_of_birth','sex')
+    surgery_times = (lab.Surgery()&'subject_id = {}'.format(subject_id)).fetch('start_time')
+    ml,ap = (lab.Surgery.Procedure()&'subject_id = {}'.format(subject_id)).fetch1('ml_location','ap_location')
+    ml_list.append(int(ml))
+    ap_list.append(int(ap))
+    age_first_surgery_list.append((np.min(surgery_times).date()-date_of_birth).days)
+    expression_time_list.append(np.diff(surgery_times)[0].days)
+    sex_list.append(sex)
+    depth_list.extend((ephys_patch.Cell()&'subject_id = {}'.format(subject_id)).fetch('depth'))
+  
+depth_list = np.asarray(depth_list)
+ap_list = np.asarray(ap_list)
+ml_list = np.asarray(ml_list)
+movie_num_list = np.asarray(movie_num_list)
+sex_list = np.asarray(sex_list)
+age_first_surgery_list = np.asarray(age_first_surgery_list)
+expression_time_list = np.asarray(expression_time_list)   
+print('{} mice'.format(len(sex_list)))  
+print('{} males, {} females'.format(sum(sex_list=='M'), sum(sex_list=='F')))  
+print('ages at first surgery: {}'.format(np.sort(age_first_surgery_list)))
+print('ml cranio locations: {}, ap cranio locations {}'.format(ml_list,ap_list))
+print('exression times:{}'.format(np.sort(expression_time_list)))
+print('cell depths:{}'.format(np.sort(depth_list)))
+    #break
 #%%
 overwrite = True
 gt_package_directory = '/home/rozmar/Data/Voltage_imaging/ground_truth'
@@ -379,7 +422,23 @@ for subject_id in subject_ids:
             
             #time.sleep(1000)
         
-
-            
+#%% ZIP ground truth data cell by cell for figshare
+gt_package_directory = '/home/rozmar/Data/Voltage_imaging/ground_truth'
+figshare_zip_directory = '/home/rozmar/Mount/HDD_RAID_2_16TB/Voltage_imaging_ground_truth_figshare'
+subjects = os.listdir(gt_package_directory)
+subjects = np.sort(subjects)
+for subject in subjects:
+    subject_dir = os.path.join(gt_package_directory,subject)
+    cells = os.listdir(subject_dir)
+    os.chdir(subject_dir)
+    for cell in cells:
+        zip_file_name = os.path.join(figshare_zip_directory,'anm{}-{}.zip'.format(subject,cell))
+        command = 'zip -r {} ./{}'.format(zip_file_name,cell)
+        print('issuing: {}'.format(command))
+        os.system(command)
+        
+        
+        
+    
             
             

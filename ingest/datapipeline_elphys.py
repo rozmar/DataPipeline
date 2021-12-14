@@ -44,7 +44,7 @@ def populatemytables_core(arguments,runround):
     elif runround == 4:
         ephysanal.ActionPotential().populate(**arguments)
         ephysanal.ActionPotentialDetails().populate(**arguments)
-def populatemytables(paralel=True,cores = 9):
+def populatemytables(paralel=True,cores = 6):
     if paralel:
         ray.init(num_cpus = cores)
         for runround in [1,2,3,4]:

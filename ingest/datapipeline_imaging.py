@@ -906,177 +906,187 @@ def save_volpy_pipeline(roitype = 'VolPy',motion_corr = 'VolPy'):
     dirs = os.listdir(volpyfolder )
     sessiondates = experiment.Session().fetch('session_date')
     for session_now in dirs:
-        if session_now.isnumeric():
-            session_date = datetime.datetime.strptime(session_now,'%Y%m%d').date()
+        if session_now.isnumeric() or 'anm' in session_now:
+            session_date = datetime.datetime.strptime(session_now[:8],'%Y%m%d').date()
+            #time.sleep(1000)
             if session_date in sessiondates:
+                #%
                 subject_id = (experiment.Session() & 'session_date = "'+str(session_date)+'"').fetch('subject_id')[0]
                 session = (experiment.Session() & 'session_date = "'+str(session_date)+'"').fetch('session')[0]            
                 key = {'subject_id':subject_id,'session':session}
                 session_dir_now = os.path.join(volpyfolder, session_now)
                 movies = os.listdir(session_dir_now)
                 movinames_dj= (imaging.Movie()&key).fetch('movie_name')
+                #%
                 for movie_name in movies:
-                    if movie_name in movinames_dj:
-                        key_now = key.copy()
-                        key_now['movie_name'] = movie_name
-                        movie_number = (imaging.Movie()&key_now).fetch('movie_number')[0]
-                        movie_x_size, movie_y_size = (imaging.Movie()&key_now).fetch1('movie_x_size','movie_y_size')
-                        movie_dir_now = os.path.join(session_dir_now, movie_name)
-                        files = os.listdir(movie_dir_now)
-                        if 'spikepursuit.pickle' in files:
-                            spikepursuit = pickle.load(open(os.path.join(movie_dir_now, 'spikepursuit.pickle'), 'rb'))
-                            motioncorr_0 = pickle.load(open(os.path.join(movie_dir_now, 'motion_corr_0.pickle'), 'rb'))
-                            motioncorr_1 = pickle.load(open(os.path.join(movie_dir_now, 'motion_corr_1.pickle'), 'rb'))
-                            cellnum = spikepursuit['estimates']['cellN'][-1]
-                            if len(imaging.ROI()&key&'movie_number = '+str(movie_number) &'roi_type = "'+roitype+'"'&'roi_number = '+str(cellnum)) == 0:
-    
-                                for cellid in spikepursuit['estimates']['cellN']:
-                                    #%
-                                    spikeidxes = spikepursuit['estimates']['spikeTimes'][cellid]
-                                    
-                                    dff = spikepursuit['estimates']['dFF'][cellid]
-                                    f0 = spikepursuit['estimates']['F0'][cellid]
-                                    motion_corr_vectors_0 = motioncorr_0['shifts_rig']
-                                    if 'x_shifts_els' in motioncorr_0.keys():
-                                        motion_corr_vectors_1 =dict()
-                                        motion_corr_vectors_1 =dict()
-                                        motion_corr_vectors_1['x_shifts'] = motioncorr_1['x_shifts_els']
-                                        motion_corr_vectors_1['y_shifts'] = motioncorr_1['y_shifts_els']
-                                    else:
-                                        motion_corr_vectors_1 = motioncorr_1['shifts_rig']
-                                    meanimage = motioncorr_1['templates_rig'][-1]
-                                    #%
-                                    ROI_centroid = scipy.ndimage.measurements.center_of_mass(spikepursuit['estimates']['bwexp'][cellid])
-                                    if len(dff)>0:
-                                        if len(imaging.RegisteredMovie()&key&'movie_number = '+str(movie_number)&'motion_correction_method = "' +motion_corr + '"')==0:
-                                            
-                                            key_reg_movie = key.copy()
-                                            key_reg_movie['movie_number'] = movie_number
-                                            key_reg_movie['motion_correction_method'] = motion_corr
-                                            key_reg_movie['registered_movie_mean_image'] = meanimage
-                                            imaging.RegisteredMovie().insert1(key_reg_movie, allow_direct_insert=True)
-                                            mcorrid = 0
-                                            if motion_corr=='VolPy_denoised':
-                                                print('NOT FINISHED') #TODO finish it
-                                                #time.sleep(1000) # add the two previous motion corrections
-                                                        
-                                            key_motioncorr = key.copy()
-                                            key_motioncorr['movie_number'] = movie_number
-                                            key_motioncorr['motion_correction_method'] = motion_corr
-                                            key_motioncorr['motion_correction_id'] = mcorrid
-                                            key_motioncorr['motion_corr_description'] = 'rigid motion correction done with VolPy'
-                                            key_motioncorr['motion_corr_vectors'] = motion_corr_vectors_0
-                                            imaging.MotionCorrection().insert1(key_motioncorr, allow_direct_insert=True)
-                                            mcorrid =+ 1
-                                            key_motioncorr = key.copy()
-                                            key_motioncorr['movie_number'] = movie_number
-                                            key_motioncorr['motion_correction_method'] = motion_corr
-                                            key_motioncorr['motion_correction_id'] = mcorrid
-                                            key_motioncorr['motion_corr_description'] = 'pairwise rigid motion correction done with VolPy'
-                                            key_motioncorr['motion_corr_vectors'] = motion_corr_vectors_1
-                                            imaging.MotionCorrection().insert1(key_motioncorr, allow_direct_insert=True)
-                                            mcorrid =+ 1
-                                        f = dff*f0+f0
-                                        
-                                        # correct with baseline pixel intensity of the camera : 100 per pixel:
-                                        f -= baseline_pixel_intensity_value
-                                        f0 -= baseline_pixel_intensity_value
-                                        dff = (f-f0)/f0
-                                        
+                    if 'cell' in movie_name.lower(): # directory structure changed due to too many tiff files, that is a workaround
+                        session_dir_now = os.path.join(volpyfolder, session_now,movie_name)
+                        movies_real = os.listdir(session_dir_now)
+                    else:
+                        session_dir_now = os.path.join(volpyfolder, session_now)
+                        movies_real = [movie_name]
+                    for movie_name in movies_real:
+                        if movie_name in movinames_dj:
+                            key_now = key.copy()
+                            key_now['movie_name'] = movie_name
+                            movie_number = (imaging.Movie()&key_now).fetch('movie_number')[0]
+                            movie_x_size, movie_y_size = (imaging.Movie()&key_now).fetch1('movie_x_size','movie_y_size')
+                            movie_dir_now = os.path.join(session_dir_now, movie_name)
+                            files = os.listdir(movie_dir_now)
+                            if 'spikepursuit.pickle' in files:
+                                spikepursuit = pickle.load(open(os.path.join(movie_dir_now, 'spikepursuit.pickle'), 'rb'))
+                                motioncorr_0 = pickle.load(open(os.path.join(movie_dir_now, 'motion_corr_0.pickle'), 'rb'))
+                                motioncorr_1 = pickle.load(open(os.path.join(movie_dir_now, 'motion_corr_1.pickle'), 'rb'))
+                                cellnum = spikepursuit['estimates']['cellN'][-1]
+                                if len(imaging.ROI()&key&'movie_number = '+str(movie_number) &'roi_type = "'+roitype+'"'&'roi_number = '+str(cellnum)) == 0:
+        
+                                    for cellid in spikepursuit['estimates']['cellN']:
                                         #%
-                                        mask = np.asarray(spikepursuit['estimates']['bwexp'][cellid],float)
-                                        wherex = np.where(spikepursuit['estimates']['bwexp'][cellid])[0]
-                                        wherey = np.where(spikepursuit['estimates']['bwexp'][cellid])[1]
-                                        mask[wherex[0]:wherex[-1]+1,wherey[0]:wherey[-1]+1] = spikepursuit['estimates']['spatialFilter'][cellid]
-    
-                                        #
-# =============================================================================
-#                                         print('waiting')
-#                                         time.sleep(1000)
-# =============================================================================
+                                        spikeidxes = spikepursuit['estimates']['spikeTimes'][cellid]
+                                        
+                                        dff = spikepursuit['estimates']['dFF'][cellid]
+                                        f0 = spikepursuit['estimates']['F0'][cellid]
+                                        motion_corr_vectors_0 = motioncorr_0['shifts_rig']
+                                        if 'x_shifts_els' in motioncorr_0.keys():
+                                            motion_corr_vectors_1 =dict()
+                                            motion_corr_vectors_1 =dict()
+                                            motion_corr_vectors_1['x_shifts'] = motioncorr_1['x_shifts_els']
+                                            motion_corr_vectors_1['y_shifts'] = motioncorr_1['y_shifts_els']
+                                        else:
+                                            motion_corr_vectors_1 = motioncorr_1['shifts_rig']
+                                        meanimage = motioncorr_1['templates_rig'][-1]
                                         #%
-                                        if 'raw' in roitype: # a very primitive measure ..
-                                            #%
-                                            files = os.listdir(movie_dir_now)
-                                            for file in files:
-                                                if 'memmap_' in file and file[-4:] == 'mmap':
-                                                    m_file = file
-                                            print(os.path.join(movie_dir_now,m_file))
-                                            try:
-                                                movie = cm.load(os.path.join(movie_dir_now,m_file))
-                                            except:
-                                                print('caiman was not loaded, loading now')
-                                                import caiman as cm
-                                                movie = cm.load(os.path.join(movie_dir_now,m_file))
-                                                #%
-                                            
-                                            ROI = spikepursuit['params']['ROIs'][cellid]
-                                            f = np.mean(movie[:,np.asarray(ROI,bool)],1)
-                                            #%
-                                            fr = spikepursuit['params']['fr']
-                                            f0 = moving_average(f,int(fr*.05))
-                                            dff_raw = (f-f0)/f0
-                                            idxap,apdict = scipy.signal.find_peaks(dff_raw*-1,height = (0,np.inf))
-                                            idxneg,nonapdict = scipy.signal.find_peaks(dff_raw,height = (0,np.inf))
-                                            medianvalue = np.median(nonapdict['peak_heights'])
-                                            peakvals = nonapdict['peak_heights'][nonapdict['peak_heights']>medianvalue]-medianvalue
-                                            peakvals = np.concatenate([peakvals,peakvals*-1])
-                                            sd = np.std(peakvals)
-                                            cutoff = medianvalue+3*sd
-                                            aps =  apdict['peak_heights']>cutoff
-                                            spikeidxes = idxap[aps]+1
-                                            f0 = moving_average(f,int(fr*4))
+                                        ROI_centroid = scipy.ndimage.measurements.center_of_mass(spikepursuit['estimates']['bwexp'][cellid])
+                                        if len(dff)>0:
+                                            if len(imaging.RegisteredMovie()&key&'movie_number = '+str(movie_number)&'motion_correction_method = "' +motion_corr + '"')==0:
+                                                
+                                                key_reg_movie = key.copy()
+                                                key_reg_movie['movie_number'] = movie_number
+                                                key_reg_movie['motion_correction_method'] = motion_corr
+                                                key_reg_movie['registered_movie_mean_image'] = meanimage
+                                                imaging.RegisteredMovie().insert1(key_reg_movie, allow_direct_insert=True)
+                                                mcorrid = 0
+                                                if motion_corr=='VolPy_denoised':
+                                                    print('NOT FINISHED') #TODO finish it
+                                                    #time.sleep(1000) # add the two previous motion corrections
+                                                            
+                                                key_motioncorr = key.copy()
+                                                key_motioncorr['movie_number'] = movie_number
+                                                key_motioncorr['motion_correction_method'] = motion_corr
+                                                key_motioncorr['motion_correction_id'] = mcorrid
+                                                key_motioncorr['motion_corr_description'] = 'rigid motion correction done with VolPy'
+                                                key_motioncorr['motion_corr_vectors'] = motion_corr_vectors_0
+                                                imaging.MotionCorrection().insert1(key_motioncorr, allow_direct_insert=True)
+                                                mcorrid =+ 1
+                                                key_motioncorr = key.copy()
+                                                key_motioncorr['movie_number'] = movie_number
+                                                key_motioncorr['motion_correction_method'] = motion_corr
+                                                key_motioncorr['motion_correction_id'] = mcorrid
+                                                key_motioncorr['motion_corr_description'] = 'pairwise rigid motion correction done with VolPy'
+                                                key_motioncorr['motion_corr_vectors'] = motion_corr_vectors_1
+                                                imaging.MotionCorrection().insert1(key_motioncorr, allow_direct_insert=True)
+                                                mcorrid =+ 1
+                                            f = dff*f0+f0
                                             
                                             # correct with baseline pixel intensity of the camera : 100 per pixel:
                                             f -= baseline_pixel_intensity_value
                                             f0 -= baseline_pixel_intensity_value
-                                            
                                             dff = (f-f0)/f0
-                                            mask = ROI
                                             
-                                            #ITT TARTOK!!!
-                                          #%%
-    #%
-                                        key_roi = key.copy()
-                                        key_roi['movie_number'] = movie_number
-                                        key_roi['motion_correction_method'] = motion_corr
-                                        key_roi['roi_number'] = cellid
-                                        key_roi['roi_type'] = roitype
-                                        key_roi['roi_dff'] = dff
-                                        key_roi['roi_f0'] = f0
-                                        key_roi['roi_spike_indices'] = spikeidxes
-                                        key_roi['roi_centroid_x'] = ROI_centroid[1]
-                                        key_roi['roi_centroid_y'] = ROI_centroid[0]
-                                        key_roi['roi_mask'] = mask
-                                        #%%
-                                        try:
-                                            imaging.ROI().insert1(key_roi, allow_direct_insert=True)
-                                        except:
-                                            print('original spikepursuit ROI already uploaded?')
                                             #%
-                                        try:   
-                                            #%%
-                                            t = np.arange(len(f))
-                                            out = scipy.optimize.curve_fit(lambda t,a,b,c,aa,bb: a*np.exp(-t/b) + c + aa*np.exp(-t/bb),  t,  f,maxfev=20000)#,bounds=(0, [np.inf,np.inf,np.inf])
-                                            a = out[0][0]
-                                            b = out[0][1]
-                                            c = out[0][2]
-                                            aa = out[0][3]
-                                            bb = out[0][4]                #break
-                                            f0 = a*np.exp(-t/b) + c + aa*np.exp(-t/bb)
-                                            dff = (f-f0)/f0
+                                            mask = np.asarray(spikepursuit['estimates']['bwexp'][cellid],float)
+                                            wherex = np.where(spikepursuit['estimates']['bwexp'][cellid])[0]
+                                            wherey = np.where(spikepursuit['estimates']['bwexp'][cellid])[1]
+                                            mask[wherex[0]:wherex[-1]+1,wherey[0]:wherey[-1]+1] = spikepursuit['estimates']['spatialFilter'][cellid]
+        
+                                            #
+    # =============================================================================
+    #                                         print('waiting')
+    #                                         time.sleep(1000)
+    # =============================================================================
+                                            #%
+                                            if 'raw' in roitype: # a very primitive measure ..
+                                                #%
+                                                files = os.listdir(movie_dir_now)
+                                                for file in files:
+                                                    if 'memmap_' in file and file[-4:] == 'mmap':
+                                                        m_file = file
+                                                print(os.path.join(movie_dir_now,m_file))
+                                                try:
+                                                    movie = cm.load(os.path.join(movie_dir_now,m_file))
+                                                except:
+                                                    print('caiman was not loaded, loading now')
+                                                    import caiman as cm
+                                                    movie = cm.load(os.path.join(movie_dir_now,m_file))
+                                                    #%
+                                                
+                                                ROI = spikepursuit['params']['ROIs'][cellid]
+                                                f = np.mean(movie[:,np.asarray(ROI,bool)],1)
+                                                #%
+                                                fr = spikepursuit['params']['fr']
+                                                f0 = moving_average(f,int(fr*.05))
+                                                dff_raw = (f-f0)/f0
+                                                idxap,apdict = scipy.signal.find_peaks(dff_raw*-1,height = (0,np.inf))
+                                                idxneg,nonapdict = scipy.signal.find_peaks(dff_raw,height = (0,np.inf))
+                                                medianvalue = np.median(nonapdict['peak_heights'])
+                                                peakvals = nonapdict['peak_heights'][nonapdict['peak_heights']>medianvalue]-medianvalue
+                                                peakvals = np.concatenate([peakvals,peakvals*-1])
+                                                sd = np.std(peakvals)
+                                                cutoff = medianvalue+3*sd
+                                                aps =  apdict['peak_heights']>cutoff
+                                                spikeidxes = idxap[aps]+1
+                                                f0 = moving_average(f,int(fr*4))
+                                                
+                                                # correct with baseline pixel intensity of the camera : 100 per pixel:
+                                                f -= baseline_pixel_intensity_value
+                                                f0 -= baseline_pixel_intensity_value
+                                                
+                                                dff = (f-f0)/f0
+                                                mask = ROI
+                                                
+                                                #ITT TARTOK!!!
+                                              #%
+        #%
+                                            key_roi = key.copy()
+                                            key_roi['movie_number'] = movie_number
+                                            key_roi['motion_correction_method'] = motion_corr
+                                            key_roi['roi_number'] = cellid
+                                            key_roi['roi_type'] = roitype
                                             key_roi['roi_dff'] = dff
                                             key_roi['roi_f0'] = f0
-                                            key_roi['roi_type'] = roitype+'_dexpF0'
-                                            #%%
-                                            imaging.ROI().insert1(key_roi, allow_direct_insert=True)
-                                            #print('I could fit the double exponential')
-                                        except:
-                                            print('couldn''t fit double exponential? ')
+                                            key_roi['roi_spike_indices'] = spikeidxes
+                                            key_roi['roi_centroid_x'] = ROI_centroid[1]
+                                            key_roi['roi_centroid_y'] = ROI_centroid[0]
+                                            key_roi['roi_mask'] = mask
                                             #%
-                                        
-    
-                            print(movie_name)                                                                               
+                                            try:
+                                                imaging.ROI().insert1(key_roi, allow_direct_insert=True)
+                                            except:
+                                                print('original spikepursuit ROI already uploaded?')
+                                                #%
+                                            try:   
+                                                #%
+                                                t = np.arange(len(f))
+                                                out = scipy.optimize.curve_fit(lambda t,a,b,c,aa,bb: a*np.exp(-t/b) + c + aa*np.exp(-t/bb),  t,  f,maxfev=20000)#,bounds=(0, [np.inf,np.inf,np.inf])
+                                                a = out[0][0]
+                                                b = out[0][1]
+                                                c = out[0][2]
+                                                aa = out[0][3]
+                                                bb = out[0][4]                #break
+                                                f0 = a*np.exp(-t/b) + c + aa*np.exp(-t/bb)
+                                                dff = (f-f0)/f0
+                                                key_roi['roi_dff'] = dff
+                                                key_roi['roi_f0'] = f0
+                                                key_roi['roi_type'] = roitype+'_dexpF0'
+                                                #%
+                                                imaging.ROI().insert1(key_roi, allow_direct_insert=True)
+                                                #print('I could fit the double exponential')
+                                            except:
+                                                print('couldn''t fit double exponential? ')
+                                                #%
+                                            
+        
+                                print(movie_name)                                                                               
     
     
 

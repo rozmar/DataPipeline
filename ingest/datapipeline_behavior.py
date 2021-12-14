@@ -129,49 +129,50 @@ def populatemytables_core(arguments,runround):
         
 def populatemytables(paralel = True, cores = 9,del_tables = True):
     IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
-    #df_surgery = pd.read_csv(dj.config['locations.metadata']+'Surgery.csv')
+    df_surgery = pd.read_csv(dj.config['locations.metadata_surgery_experiment']+'Surgery.csv')
     for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects      and removing subject related analysis   
-       # if df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # only if the animal is still in training..
-        if len((experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"').fetch('session')) > 0 and del_tables:
-            
-            schemas_todel = [behavioranal.SubjectFittedChoiceCoefficientsRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsRNR() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsNRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsOnlyChoices() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsOnlyUnRewardeds() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients3lpRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients3lpRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients3lpRNR() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients3lpNRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients3lpR() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients3lpC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients3lpNR() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients2lpRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients2lpRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients2lpRNR() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients2lpNRC() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficients2lpR() & 'subject_id = "' + str(subject_id_now)+'"',   
-                             behavioranal.SubjectFittedChoiceCoefficients2lpC() & 'subject_id = "' + str(subject_id_now)+'"',  
-                             behavioranal.SubjectFittedChoiceCoefficients2lpNR() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsConvR() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SessionPsychometricDataFitted() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPsychometricCurveBoxCarFractional() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPsychometricCurveBoxCarDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPsychometricCurveFittedFractional() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPsychometricCurveFittedDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPolarPsyCurveBoxCarDifferential2lp() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPolarPsyCurveBoxCarFractional2lp() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPolarPsyCurveBoxCarDifferential3lp() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectPolarPsyCurveBoxCarFractional3lp() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SessionPerformance() & 'subject_id = "' + str(subject_id_now)+'"',
-                             behavioranal.SubjectFittedChoiceCoefficientsVSTime() & 'subject_id = "' + str(subject_id_now)+'"',
-                             ]
-            dj.config['safemode'] = False
-            for schema_todel in schemas_todel:
-                schema_todel.delete()
-            dj.config['safemode'] = True       
+        
+        if subject_now in df_surgery['ID'].values and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # only if the animal is still in training..
+            if len((experiment.Session() & 'subject_id = "'+str(subject_id_now)+'"').fetch('session')) > 0 and del_tables:
+                
+                schemas_todel = [behavioranal.SubjectFittedChoiceCoefficientsRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsRNR() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsOnlyRewards() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsOnlyChoices() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsOnlyUnRewardeds() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients3lpRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients3lpRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients3lpRNR() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients3lpNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients3lpR() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients3lpC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients3lpNR() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients2lpRNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients2lpRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients2lpRNR() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients2lpNRC() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficients2lpR() & 'subject_id = "' + str(subject_id_now)+'"',   
+                                 behavioranal.SubjectFittedChoiceCoefficients2lpC() & 'subject_id = "' + str(subject_id_now)+'"',  
+                                 behavioranal.SubjectFittedChoiceCoefficients2lpNR() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsConvR() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SessionPsychometricDataFitted() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPsychometricCurveBoxCarFractional() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPsychometricCurveBoxCarDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPsychometricCurveFittedFractional() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPsychometricCurveFittedDifferential() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPolarPsyCurveBoxCarDifferential2lp() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPolarPsyCurveBoxCarFractional2lp() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPolarPsyCurveBoxCarDifferential3lp() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectPolarPsyCurveBoxCarFractional3lp() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SessionPerformance() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 behavioranal.SubjectFittedChoiceCoefficientsVSTime() & 'subject_id = "' + str(subject_id_now)+'"',
+                                 ]
+                dj.config['safemode'] = False
+                for schema_todel in schemas_todel:
+                    schema_todel.delete()
+                dj.config['safemode'] = True       
     if paralel:
  #%%
         schema = dj.schema(pipeline_tools.get_schema_name('behavior-anal'),locals())
@@ -198,7 +199,7 @@ def populatebehavior(paralel = True,drop_last_session_for_mice_in_training = Tru
     print('adding behavior experiments')
      #%%
     IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}
-    df_surgery = pd.read_csv(dj.config['locations.metadata_behavior']+'Surgery.csv')
+    df_surgery = pd.read_csv(dj.config['locations.metadata_surgery_experiment']+'Surgery.csv')
     for subject_now,subject_id_now in zip(IDs.keys(),IDs.values()): # iterating over subjects      and removing last session     
         if subject_now in df_surgery['ID'].values and drop_last_session_for_mice_in_training == True and df_surgery['status'][df_surgery['ID']==subject_now].values[0] != 'sacrificed': # the last session is deleted only if the animal is still in training..
             print(df_surgery['status'][df_surgery['ID']==subject_now].values[0])
@@ -257,7 +258,7 @@ def populatebehavior_core(IDs = None):
     #         #df_wr = online_notebook.fetch_water_restriction_metadata(subject_now)
     # =============================================================================
         try:
-            df_wr = pd.read_csv(dj.config['locations.metadata_behavior']+subject_now+'.csv')
+            df_wr = pd.read_csv(dj.config['locations.metadata_surgery_experiment']+subject_now+'.csv')
         except:
             print(subject_now + ' has no metadata available')
             df_wr = pd.DataFrame()

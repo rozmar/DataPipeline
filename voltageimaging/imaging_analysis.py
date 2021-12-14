@@ -20,6 +20,136 @@ matplotlib.rc('font', **font)
 from pathlib import Path
 
 homefolder = dj.config['locations.mr_share']
+#%% ephys parameters at different expression times and different viruses
+ephys_data=dict()
+ephys_data = {'cell_dict':list(),
+              'virus':list(),
+              'expression_time':list(),
+              'RS':list(),
+              'Rin':list(),
+              'AP_amplitude':list(),
+              'AP_halfwidth':list(),
+              'AP_threshold':list(),
+              'resting':list()}
+cells = ephys_patch.Cell()
+APs_needed = 50
+AP_max_RS = 40
+AP_max_baseline = -40 #mV
+max_baseline_current = 100*10**-12 #A
+max_v0 = -.04 #V
+min_current = -40*10**-12 #A
+min_pulse_time = 0.3 #s
+integration_window = .04 #sec
+for cell in cells:
+    if len((lab.Surgery()&'subject_id = {}'.format(cell['subject_id'])).fetch('start_time'))==1:
+        continue # if there is only one surgery, we don't care
+    expression_time = np.diff((lab.Surgery()&'subject_id = {}'.format(cell['subject_id'])).fetch('start_time'))[0].days
+    virus_id = (lab.Surgery.VirusInjection()&'subject_id = {}'.format(cell['subject_id'])).fetch('virus_id')[0]
+    if virus_id == 238:
+        virus = 'Voltron 1'
+    elif virus_id == 240:
+        virus = 'Voltron 2'
+    else:
+        virus = '??'
+
+    squarepulses = ephysanal.SquarePulse()&cell&'square_pulse_amplitude < {}'.format(min_current)&'square_pulse_length > {}'.format(min_pulse_time)
+    Rins = list()
+    RSs = list()
+    v0s = list()
+    for squarepulse in squarepulses:
+        trace = (ephys_patch.SweepResponse()&squarepulse).fetch1('response_trace')
+        stim = (ephys_patch.SweepStimulus()&squarepulse).fetch1('stimulus_trace')
+        sr = (ephys_patch.SweepMetadata()&squarepulse).fetch1('sample_rate')
+        step_back = int(integration_window*sr)
+        if step_back<squarepulse['square_pulse_start_idx'] and np.abs(np.median(stim[:step_back]))<=max_baseline_current and np.median(trace[:step_back])<max_v0:
+            RS = float((ephysanal.SweepSeriesResistance()&squarepulse).fetch1('series_resistance'))
+            RS_residual = float((ephysanal.SweepSeriesResistance()&squarepulse).fetch1('series_resistance_residual'))
+            baseline_v = np.median(trace[squarepulse['square_pulse_start_idx']-step_back:squarepulse['square_pulse_start_idx']])
+            Rin_v = np.median(trace[squarepulse['square_pulse_end_idx']-step_back:squarepulse['square_pulse_end_idx']])
+            dv = Rin_v-baseline_v
+            di = squarepulse['square_pulse_amplitude']
+            Rin = dv/di/1000000 - RS_residual
+            Rins.append(Rin)
+            RSs.append(RS)
+            v0s.append(baseline_v*1000)
+            #break
+        
+    if len(Rins)>1: 
+        rs,threshold,baseline,hw,amplitude = (ephysanal.SweepSeriesResistance()*ephysanal.ActionPotential()*ephysanal.ActionPotentialDetails()&cell&'ap_real=1').fetch('series_resistance','ap_threshold','ap_baseline_value','ap_halfwidth','ap_amplitude')
+        needed = (rs<AP_max_RS) & (baseline<AP_max_baseline)
+        if sum(needed)>=100:
+            ap_order = np.argsort(hw[needed])#[::-1]
+            AP_ampl = np.median(amplitude[needed][ap_order][:APs_needed])
+            AP_hw = np.median(hw[needed][ap_order][:APs_needed])
+            AP_threshold = np.median(threshold[needed][ap_order][:APs_needed])
+            RS = np.median(RSs)
+            Rin = np.median(Rins)
+            v0 = np.median(v0s)
+            ephys_data['cell_dict'].append(cell)
+            ephys_data['virus'].append(virus)
+            ephys_data['expression_time'].append(expression_time)
+            ephys_data['RS'].append(RS)
+            ephys_data['Rin'].append(Rin)
+            ephys_data['AP_amplitude'].append(AP_ampl)
+            ephys_data['AP_halfwidth'].append(AP_hw)
+            ephys_data['AP_threshold'].append(AP_threshold)
+            ephys_data['resting'].append(v0)
+            print(cell)
+# =============================================================================
+#             if AP_ampl>70:
+#                 try:
+#                     outdict = plot_IV(subject_id = cell['subject_id'], cellnum = cell['cell_number'], ivnum = 0,IVsweepstoplot = None)
+#                     outdict = plot_IV(subject_id = cell['subject_id'], cellnum = cell['cell_number'], ivnum = 1,IVsweepstoplot = None)
+#                     outdict = plot_IV(subject_id = cell['subject_id'], cellnum = cell['cell_number'], ivnum = 2,IVsweepstoplot = None)
+#                 except:
+#                     pass
+# =============================================================================
+                #break
+                
+            #break
+for key in ephys_data.keys():
+    ephys_data[key]=np.asarray(ephys_data[key])
+
+#%% plot ephys results
+
+binnum = 5
+fig = plt.figure(figsize = [5,5])
+ax_RS = fig.add_subplot(321)
+ax_Rin = fig.add_subplot(322)
+ax_amplitude = fig.add_subplot(323)
+ax_hw = fig.add_subplot(324)
+ax_threshold = fig.add_subplot(325)
+ax_exptime = fig.add_subplot(326)
+viruses =  np.unique(ephys_data['virus'])
+histdata=dict()
+for virus in viruses:
+    idx = ephys_data['virus']==virus
+    for key in ephys_data.keys():
+        try:
+            histdata[key][virus]=ephys_data[key][idx]
+        except:
+            histdata[key] = dict()
+            histdata[key][virus]=dict()
+            histdata[key][virus]=ephys_data[key][idx]
+ax_RS.hist([histdata['RS']['Voltron 1'],histdata['RS']['Voltron 2']], binnum, histtype='bar',label = viruses)    
+ax_RS.set_xlabel('RS (MOhm)')
+ax_RS.set_ylabel('# (cells)')
+ax_Rin.hist([histdata['Rin']['Voltron 1'],histdata['Rin']['Voltron 2']], binnum, histtype='bar',label = viruses)    
+ax_Rin.set_xlabel('Rin (MOhm)')
+ax_amplitude.hist([histdata['AP_amplitude']['Voltron 1'],histdata['AP_amplitude']['Voltron 2']], binnum, histtype='bar',label = viruses)    
+ax_amplitude.set_xlabel('AP amplitude (mV)')
+ax_amplitude.set_ylabel('# (cells)')
+ax_hw.hist([histdata['AP_halfwidth']['Voltron 1'],histdata['AP_halfwidth']['Voltron 2']], binnum, histtype='bar',label = viruses)    
+ax_hw.set_xlabel('AP halfwidth (ms)')
+ax_hw.set_ylabel('# (cells)')
+ax_threshold.hist([histdata['resting']['Voltron 1'],histdata['resting']['Voltron 2']], binnum, histtype='bar',label = viruses)    
+ax_threshold.set_xlabel('AP threshold (mV)')
+ax_threshold.set_ylabel('# (cells)')
+ax_exptime.plot(histdata['expression_time']['Voltron 1'],histdata['Rin']['Voltron 1'],'o')
+ax_exptime.plot(histdata['expression_time']['Voltron 2'],histdata['Rin']['Voltron 2'],'o')
+ax_exptime.set_xlabel('Expression time (days)')
+ax_exptime.set_ylabel('Rin (MOhms)')
+ax_RS.legend()      
 
 #%% depth histogram
 depth = (ephys_patch.Cell()*imaging_gt.CellMovieCorrespondance()).fetch('depth')
@@ -93,12 +223,15 @@ downsampled_rate = 10000 #Hz
 junction_potential = 13.5
 
 
-key ={'subject_id':456462}
-key['movie_number'] = 3 #3
-
-
 key ={'subject_id':462149}
 key['movie_number'] = 0 #3
+
+
+key ={'subject_id':466771}
+key['movie_number'] = 1 #3
+
+key ={'subject_id':456462}
+key['movie_number'] = 3 #3
 
 key = (imaging_gt.CellMovieCorrespondance()&key).fetch(as_dict = True)[0]
 key['roi_type'] = "VolPy"
@@ -196,9 +329,11 @@ for sweep_number in sweep_numbers:
     kernel = np.concatenate([f_on,np.zeros(len(f_off))])[::-1]
     kernel  = kernel /sum(kernel )
     
-    trace_conv0 = np.convolve(np.concatenate([v_out[500::-1],v_out,v_out[:-500:-1]]),kernel,mode = 'same') 
-    trace_conv0 = trace_conv0[500:500+len(v_out)]
-    
+# =============================================================================
+#     trace_conv0 = np.convolve(np.concatenate([v_out[500::-1],v_out,v_out[:-500:-1]]),kernel,mode = 'same') 
+#     trace_conv0 = trace_conv0[500:500+len(v_out)]
+# =============================================================================
+    trace_conv0 = v_out
     kernel = np.ones(int(np.round(downsampled_rate/framerate)))
     kernel  = kernel /sum(kernel )
     trace_conv = np.convolve(np.concatenate([v_out[500::-1],trace_conv0,v_out[:-500:-1]]),kernel,mode = 'same') 
@@ -272,7 +407,7 @@ axxxx.set_xlim([0,10])
 ax_motion = fig.add_subplot(323, sharex=ax)
 ax_motion.plot(motion_corr_vectors)
 #%%
-sigma = .025
+sigma = .0025
 roi_f_filt = ndimage.gaussian_filter(roi_f,sigma*framerate)
 roi_dff_filt = ndimage.gaussian_filter(roi_dff,sigma*framerate)
 dff_fit_filt = ndimage.gaussian_filter(dff_fit,sigma*framerate)
@@ -364,6 +499,15 @@ ax_dff_peakfit_corr.invert_yaxis()
 ax_dff_threshfit_corr = fig.add_subplot(7,2,10)
 ax_dff_threshfit_corr.hist2d(trace_im_filt,dff_fit_ap_thresh_filt,150,[[np.nanmin(trace_im_filt),-40],[np.nanmin(dff_fit_ap_thresh_filt),np.nanmax(dff_fit_ap_thresh_filt)]],norm=colors.PowerNorm(gamma=0.3),cmap =  plt.get_cmap('jet'))
 ax_dff_threshfit_corr.invert_yaxis()
+#%% figure for karel
+needed = frame_times<490
+fig = plt.figure()
+sp = fig.add_subplot(111)
+sp.hist2d(trace_im_filt[needed],dff_fit_ap_peak_filt[needed]*100-15,150,[[-85,-45],[np.nanmin(dff_fit_ap_peak_filt*100-15),np.nanmax(dff_fit_ap_peak_filt*100-15)]],norm=colors.PowerNorm(gamma=0.3),cmap =  plt.get_cmap('jet'))
+sp.set_xlabel('Membrane potential (mV)')
+sp.set_ylabel('dF/F (%)')
+sp.invert_yaxis()
+
 
 #%%
 # =============================================================================

@@ -1,8 +1,8 @@
 import datajoint as dj
 import pipeline.lab as lab#, ccf
-import pipeline.experiment as experiment
-import pipeline.ephys_patch as ephys_patch
-import pipeline.ephysanal as ephysanal
+#import pipeline.experiment as experiment
+#import pipeline.ephys_patch as ephys_patch
+#import pipeline.ephysanal as ephysanal
 from pipeline.pipeline_tools import get_schema_name
 schema = dj.schema(get_schema_name('imaging'),locals())
 from PIL import Image

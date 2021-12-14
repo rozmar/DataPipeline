@@ -4,6 +4,7 @@ from pipeline import lab, experiment, ephys_patch, ephysanal, imaging, imaging_g
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import cm
+#%%
 def plot_precision_recall(key_cell,binwidth =  30,frbinwidth = 0.01,firing_rate_window = 3,save_figures = True,xlimits =None):
     #%%
     session_time, cell_recording_start = (experiment.Session()*ephys_patch.Cell()&key_cell).fetch1('session_time','cell_recording_start')
@@ -111,27 +112,44 @@ def plot_precision_recall(key_cell,binwidth =  30,frbinwidth = 0.01,firing_rate_
 # =============================================================================
     
     #%%
+
+    #%%
 def plot_ephys_ophys_trace(key_cell,time_to_plot=None,trace_window = 1,show_stimulus = False,show_e_ap_peaks = False, show_o_ap_peaks = False):
     #%%
+    key_cell = {'session': 1,
+                'subject_id': 456462,#462149,#466773,#466773,#454597,#466773,
+                'cell_number': 3,#1,#3,#
+                'motion_correction_method': 'VolPy',
+                'roi_type': 'VolPy'}
+
 # =============================================================================
-#     key_cell = {'session': 1,
-#                 'subject_id': 456462,
-#                 'cell_number': 3,
-#                 'motion_correction_method': 'VolPy',
-#                 'roi_type': 'VolPy'}
-#     time_to_plot=None
-#     trace_window = 100
+#     time_to_plot=35
+#     trace_window = 20
+#     time_to_plot=29.5
+#     trace_window = 2
+#     time_to_plot=10.2
+#     trace_window = 2
 #     show_stimulus = False
-#     show_e_ap_peaks = True
-#     show_o_ap_peaks = True
+#     show_e_ap_peaks = False
+#     show_o_ap_peaks = False
 # =============================================================================
     
     
     fig=plt.figure()
-    ax_ophys = fig.add_axes([0,0,2,.8])
-    ax_ephys = fig.add_axes([0,-1,2,.8])
+    
     if show_stimulus:
-        ax_ephys_stim = fig.add_axes([0,-1.5,2,.4])
+        ax_ophys = fig.add_subplot(311)
+        ax_ephys = fig.add_subplot(312, sharex=ax_ophys)
+        ax_ephys_stim = fig.add_subplot(313, sharex=ax_ophys)
+    else:
+        ax_ophys = fig.add_subplot(211)
+        ax_ephys = fig.add_subplot(212, sharex=ax_ophys)
+# =============================================================================
+#     ax_ophys = fig.add_axes([0,0,2,.8])
+#     ax_ephys = fig.add_axes([0,-1,2,.8])
+#     if show_stimulus:
+#         ax_ephys_stim = fig.add_axes([0,-1.5,2,.4])
+# =============================================================================
         
     #%
     session_time, cell_recording_start = (experiment.Session()*ephys_patch.Cell()&key_cell).fetch1('session_time','cell_recording_start')
@@ -267,6 +285,146 @@ def plot_ephys_ophys_trace(key_cell,time_to_plot=None,trace_window = 1,show_stim
     else:
         ax_ephys.set_xlabel('time from first movie start (s)')
     outdict = {'ephys':ephysdata,'ophys':ophysdata,'figure_handle':fig}
+    meanim = (imaging.RegisteredMovie()&key_movie).fetch1('registered_movie_mean_image')
+    mask = ((imaging.ROI()*imaging_gt.GroundTruthROI())&key_movie).fetch1('roi_mask')
+    fig=plt.figure()
+    ax1 = fig.add_subplot(211)
+    ax2 = fig.add_subplot(212, sharex=ax1, sharey=ax1)
+    ax1.imshow(mask)
+    im = ax2.imshow(meanim,cmap = 'gray')
+    plt.colorbar(im)
+# =============================================================================
+#     add_scalebar_to_fig(ax2,
+#                         axis = 'x',
+#                         size = 10,
+#                         conversion = 0.59,
+#                         unit = r'$\mu$m',
+#                         color = 'white',
+#                         location = 'top right',
+#                         linewidth = 3)
+#     
+#     add_scalebar_to_fig(ax_ophys,
+#                         axis = 'x',
+#                         size = 200,
+#                         conversion = 1000,
+#                         unit = r'ms',
+#                         color = 'black',
+#                         location = 'top right',
+#                         linewidth = 3)
+#     add_scalebar_to_fig(ax_ophys,
+#                         axis = 'y',
+#                         size = 3,
+#                         conversion = 100,
+#                         unit = r'% dF/F0',
+#                         color = 'black',
+#                         location = 'top right',
+#                         linewidth = 3)
+#     
+#     #%
+#     add_scalebar_to_fig(ax_ephys,
+#                         axis = 'x',
+#                         size = 200,
+#                         conversion = 1000,
+#                         unit = r'ms',
+#                         color = 'black',
+#                         location = 'top right',
+#                         linewidth = 3)
+#     add_scalebar_to_fig(ax_ephys,
+#                         axis = 'y',
+#                         size = 20,
+#                         conversion = 1,
+#                         unit = r'mV',
+#                         color = 'black',
+#                         location = 'middle right',
+#                         linewidth = 3)
+# =============================================================================
+    #%%
+def add_scalebar_to_fig(ax,
+                        axis = 'x',
+                        size = 50,
+                        conversion = 0.59,
+                        unit = r'$\mu$m',
+                        color = 'white',
+                        location = 'top right',
+                        linewidth = 3):
+    
+    
+    ax.axis('off')
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    
+    realsize = size/conversion
+    scalevalues = np.asarray([0,realsize])
+    
+    if axis =='x':
+        if 'top' in location:
+            yoffset_text = ylim[1]-np.diff(ylim)[0]*.1*2
+        elif 'bottom' in location:
+            yoffset_text = ylim[0]+np.diff(ylim)[0]*.1*2 
+        else:
+            yoffset_text = np.mean(ylim)
+        if 'right' in location:
+            xoffset_text = xlim[1]-np.diff(xlim)[0]*.1-realsize/2
+        elif 'left' in location:
+            xoffset_text = xlim[0]+np.diff(xlim)[0]*.1+realsize/2
+        else:
+            xoffset_text = np.mean(xlim)
+        
+    if axis =='y':
+        if 'top' in location:
+            yoffset_text = ylim[1]-np.diff(ylim)[0]*.1-realsize/2
+        elif 'bottom' in location:
+            yoffset_text = ylim[0]+np.diff(ylim)[0]*.1+realsize/2
+        else:
+            yoffset_text = np.mean(ylim)
+        if 'right' in location:
+            xoffset_text = xlim[1]-np.diff(xlim)[0]*.1*2
+        elif 'left' in location:
+            xoffset_text = xlim[0]+np.diff(xlim)[0]*.1*2
+        else:
+            xoffset_text = np.mean(xlim)
+    if 'top' in location:
+        if axis == 'y':
+            yoffset = ylim[1]-np.diff(ylim)[0]*.1-realsize
+            #yoffset_text = yoffset+realsize/2
+        else:
+            yoffset = ylim[1]-np.diff(ylim)[0]*.1
+            #yoffset_text = yoffset-np.diff(ylim)[0]*.1
+    elif 'bottom' in location:
+        #if axis == 'y':  
+        yoffset = ylim[0]+np.diff(ylim)[0]*.1#yoffset_text = yoffset+realsize/2
+    else:
+        if axis == 'y':
+            yoffset = np.mean(ylim) - realsize/2
+        else:
+            yoffset = np.mean(ylim)
+    
+    if 'right' in location:
+        if axis == 'x':
+            xoffset = xlim[1]-np.diff(xlim)[0]*.1-realsize
+        else:
+            xoffset = xlim[1]-np.diff(xlim)[0]*.1
+    elif 'left' in location:
+        xoffset = xlim[0]+np.diff(xlim)[0]*.1
+    else:
+        if axis == 'x':
+            xoffset = np.mean(xlim) - realsize/2
+        else:
+            xoffset = np.mean(xlim)
+    if axis == 'x':    
+        xvalues = scalevalues + xoffset
+        yvalues = np.asarray([0,0]) + yoffset
+    else:
+        xvalues = np.asarray([0,0])+xoffset
+        yvalues = scalevalues + yoffset
+        
+    ax.plot(xvalues,yvalues,linewidth = linewidth, color = color) 
+    ax.text(xoffset_text,yoffset_text, '{} {}'.format(size,unit),color=color)
+    print([xvalues,yvalues])
+       #return scalebar
+   
+   #%%
+    
 #%%
     return outdict
 
@@ -305,8 +463,8 @@ def plot_IV(subject_id = 454597, cellnum = 1, ivnum = 0,IVsweepstoplot = None):
         linenow['time'] = time
         df_IV = pd.concat([df_IV,linenow.to_frame().transpose()])
     fig=plt.figure()
-    ax_IV=fig.add_axes([0,0,1,1])
-    ax_stim=fig.add_axes([0,-.4,1,.2])
+    ax_IV=fig.add_subplot(211)#add_axes([0,0,1,1])
+    ax_stim=fig.add_subplot(212)#.add_axes([0,-.4,1,.2])
     for line in df_IV.iterrows():
         ax_IV.plot(line[1]['time'],line[1]['response_trace']*1000,'k-')
         ax_stim.plot(line[1]['time'],line[1]['stimulus_trace']*10**12,'k-')
@@ -438,14 +596,21 @@ def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',
                               frame_rate_max = 1800 ,
                               F0_min = 50, 
                               bin_num = 10 ):       
+    
     #%% Show S/N ratios for each AP
+    
+    bin_num = 10
+    holding_min = -600 #pA
+    v0_max = -35 #mV
+    roi_type = 'VolPy_raw'#'Spikepursuit'#'VolPy_denoised'#'SpikePursuit'#'VolPy_dexpF0'#'VolPy'#'SpikePursuit_dexpF0'#'VolPy_dexpF0'#''Spikepursuit'#'VolPy'#
+    F0_min = 50
+    frame_rate_min =200
+    frame_rate_max = 800
+    
+    
+    
     cmap = cm.get_cmap('jet')
-# =============================================================================
-#     bin_num = 10
-#     holding_min = -600 #pA
-#     v0_max = -35 #mV
-#     roi_type = 'Spikepursuit'#'Spikepursuit'#'VolPy_denoised'#'SpikePursuit'#'VolPy_dexpF0'#'VolPy'#'SpikePursuit_dexpF0'#'VolPy_dexpF0'#''Spikepursuit'#'VolPy'#
-# =============================================================================
+    
     key = {'roi_type':roi_type}
     gtdata = pd.DataFrame((imaging_gt.GroundTruthROI()&key))
     cells = gtdata.groupby(['session', 'subject_id','cell_number','motion_correction_method','roi_type']).size().reset_index(name='Freq')
@@ -490,7 +655,76 @@ def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',
         peakamplitudes_all.append(peakamplitudes)
         noise_all.append(noises)
         #plot_AP_waveforms(key_cell,AP_tlimits)
-    
+        #%%
+# =============================================================================
+#     virus_list=list()
+#     subject_ids = list()
+#     for cell in cells.iterrows():
+#         cell = cell[1]
+#         key_cell = dict(cell)    
+#         del key_cell['Freq']
+#         virus_id = (lab.Surgery.VirusInjection()&'subject_id = {}'.format(key_cell['subject_id'])).fetch('virus_id')[0]
+#         if virus_id == 238:
+#             virus = 'Voltron 1'
+#         elif virus_id == 240:
+#             virus = 'Voltron 2'
+#         virus_list.append(virus)
+#         subject_ids.append(key_cell['subject_id'])
+#    # order = np.argsort(virus_list)
+#     order = np.lexsort((virus_list, subject_ids))
+#     snratio = np.asarray(snratio)[order]
+#     v0s = np.asarray(v0s)[order]
+#     holdings = np.asarray(holdings)[order]
+#     rss = np.asarray(rss)[order]
+#     threshs =np.asarray(threshs)[order]
+#     mintreshs = np.asarray(mintreshs)[order]
+#     f0s_all = np.asarray(f0s_all)[order]
+#     snratios_all = np.asarray(snratios_all)[order]
+#     peakamplitudes_all = np.asarray(peakamplitudes_all)[order]
+#     noise_all = np.asarray(noise_all)[order]
+#     virus_list = np.asarray(virus_list)[order]
+#     cells = cells.set_index(order, append=True).sort_index(level=1).reset_index(1, drop=True)
+# =============================================================================
+    #%%
+    apnum = 50
+    fig=plt.figure(figsize=[10,10])
+    ax_exptime_f0 = fig.add_subplot(221)
+    ax_exptime_dff = fig.add_subplot(222)
+    ax_exptime_noise = fig.add_subplot(223)
+    ax_exptime_snration = fig.add_subplot(224)
+    for loopidx, (f0,snratio_now,noise_now,peakampl_now,cell_now) in enumerate(zip(f0s_all,snratios_all,noise_all,peakamplitudes_all,cells.iterrows())):
+        if len(f0)>0:# and cell_now[1]['subject_id']==466774:# and cell_now[1]['cell_number']==1:
+            coloridx = loopidx/len(cells)
+            cell_now = cell_now[1]
+            virus_id = (lab.Surgery.VirusInjection()&'subject_id = {}'.format(cell_now['subject_id'])).fetch('virus_id')[0]
+            if virus_id == 238:
+                virus = 'Voltron 1'
+            elif virus_id == 240:
+                virus = 'Voltron 2'
+            else:
+                virus = '??'
+            label_now = 'Subject:{}'.format(cell_now['subject_id'])+' Cell:{} - {}'.format(cell_now['cell_number'],virus)
+            
+            expression_time = np.diff((lab.Surgery()&'subject_id = {}'.format(cell_now['subject_id'])).fetch('start_time'))[0].days
+            ax_exptime_f0.plot(expression_time,np.mean(f0[:apnum]),'o',ms=10, color = cmap(coloridx),label=label_now)
+            ax_exptime_f0.errorbar(expression_time,np.mean(f0[:apnum]),np.std(f0[:apnum]),ecolor = cmap(coloridx))
+            ax_exptime_f0.set_xlabel('expression time (days)')
+            ax_exptime_f0.set_ylabel('F0 (pixel intensity)')
+            
+            ax_exptime_dff.plot(expression_time,np.mean(peakampl_now[:apnum]),'o',ms=10, color = cmap(coloridx),label=label_now)
+            ax_exptime_dff.errorbar(expression_time,np.mean(peakampl_now[:apnum]),np.std(peakampl_now[:apnum]),ecolor = cmap(coloridx))
+            ax_exptime_dff.set_xlabel('expression time (days)')
+            ax_exptime_dff.set_ylabel('AP peak amplitude (dF/F)')
+            
+            ax_exptime_noise.plot(expression_time,np.mean(noise_now[:apnum]),'o',ms=10, color = cmap(coloridx),label=label_now)
+            ax_exptime_noise.errorbar(expression_time,np.mean(noise_now[:apnum]),np.std(noise_now[:apnum]),ecolor = cmap(coloridx))
+            ax_exptime_noise.set_xlabel('expression time (days)')
+            ax_exptime_noise.set_ylabel('noise (dF/F)')
+            
+            ax_exptime_snration.plot(expression_time,np.mean(snratio_now[:apnum]),'o',ms=10, color = cmap(coloridx),label=label_now)
+            ax_exptime_snration.errorbar(expression_time,np.mean(snratio_now[:apnum]),np.std(snratio_now[:apnum]),ecolor = cmap(coloridx))
+            ax_exptime_snration.set_xlabel('expression time (days)')
+            ax_exptime_snration.set_ylabel('S/N ratio')
     #%%  for each AP
     
     fig=plt.figure()
@@ -501,10 +735,17 @@ def plot_cell_SN_ratio_APwise(roi_type = 'VolPy',
     ax_peakampl_f0 = fig.add_axes([1.3,0,1,1])
     ax_peakampl_f0_binned = fig.add_axes([1.3,-1.2,1,1])
     for loopidx, (f0,snratio_now,noise_now,peakampl_now,cell_now) in enumerate(zip(f0s_all,snratios_all,noise_all,peakamplitudes_all,cells.iterrows())):
-        if len(f0)>0:
+        if len(f0)>0:# and cell_now[1]['subject_id']==466774:# and cell_now[1]['cell_number']==1:
             coloridx = loopidx/len(cells)
             cell_now = cell_now[1]
-            label_now = 'Subject:{}'.format(cell_now['subject_id'])+' Cell:{}'.format(cell_now['cell_number'])
+            virus_id = (lab.Surgery.VirusInjection()&'subject_id = {}'.format(cell_now['subject_id'])).fetch('virus_id')[0]
+            if virus_id == 238:
+                virus = 'Voltron 1'
+            elif virus_id == 240:
+                virus = 'Voltron 2'
+            else:
+                virus = '??'
+            label_now = 'Subject:{}'.format(cell_now['subject_id'])+' Cell:{} - {}'.format(cell_now['cell_number'],virus)
             ax_sn_f0.plot(f0,snratio_now,'o',ms=1, color = cmap(coloridx), label= label_now)
             ax_noise_f0.plot(f0,noise_now,'o',ms=1, color = cmap(coloridx), label= label_now)
             ax_peakampl_f0.plot(f0,peakampl_now,'o',ms=1, color = cmap(coloridx), label= label_now)

@@ -50,7 +50,7 @@ def fetch_water_restriction_metadata(ID):
         idx_now = sheetnames.index(ID)
         if idx_now > -1:
             params = {'majorDimension':'ROWS'}
-            temp = wb.values_get(ID+'!A1:O100',params)
+            temp = wb.values_get(ID+'!A1:O900',params)
             temp = temp['values']
             header = temp.pop(0)
             data = list()
